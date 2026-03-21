@@ -42,10 +42,6 @@ pub fn rules_dir(claude_dir: &PathBuf) -> PathBuf {
     claude_dir.join("rules")
 }
 
-pub fn protocol_file(claude_dir: &PathBuf) -> PathBuf {
-    rules_dir(claude_dir).join("praxis-echo.md")
-}
-
 // Document paths
 pub fn learning_file(docs_dir: &PathBuf) -> PathBuf {
     docs_dir.join("LEARNING.md")

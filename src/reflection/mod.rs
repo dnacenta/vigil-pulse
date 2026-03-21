@@ -66,10 +66,6 @@ pub fn rules_dir() -> Result<PathBuf, String> {
     Ok(claude_dir()?.join("rules"))
 }
 
-pub fn protocol_file() -> Result<PathBuf, String> {
-    Ok(rules_dir()?.join("vigil-echo.md"))
-}
-
 // Document paths
 pub fn reflections_file() -> Result<PathBuf, String> {
     Ok(docs_dir()?.join("REFLECTIONS.md"))

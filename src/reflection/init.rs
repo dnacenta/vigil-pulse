@@ -3,8 +3,6 @@ use std::path::PathBuf;
 
 use owo_colors::OwoColorize;
 
-const PROTOCOL_TEMPLATE: &str = include_str!("../../templates/vigil-echo.md");
-
 const PULSE_COMMAND: &str = "vigil-echo pulse";
 const COLLECT_COMMAND: &str = "vigil-echo collect --trigger session-end";
 
@@ -44,34 +42,6 @@ fn write_if_not_exists(path: &PathBuf, content: &str, label: &str) {
             Ok(()) => print_status(Status::Created, &format!("Created {label}")),
             Err(e) => print_status(Status::Error, &format!("Failed to create {label}: {e}")),
         }
-    }
-}
-
-fn write_protocol(path: &PathBuf) {
-    if path.exists() {
-        let existing = fs::read_to_string(path).unwrap_or_default();
-        if existing == PROTOCOL_TEMPLATE {
-            print_status(Status::Exists, "Protocol rules already up to date");
-            return;
-        }
-        match fs::write(path, PROTOCOL_TEMPLATE) {
-            Ok(()) => print_status(Status::Created, "Updated protocol rules"),
-            Err(e) => print_status(
-                Status::Error,
-                &format!("Failed to write protocol rules: {e}"),
-            ),
-        }
-        return;
-    }
-    match fs::write(path, PROTOCOL_TEMPLATE) {
-        Ok(()) => print_status(
-            Status::Created,
-            "Created protocol rules (~/.claude/rules/vigil-echo.md)",
-        ),
-        Err(e) => print_status(
-            Status::Error,
-            &format!("Failed to write protocol rules: {e}"),
-        ),
     }
 }
 
@@ -206,9 +176,6 @@ pub fn run() -> Result<(), String> {
 
     ensure_dir(&rules_dir, "rules directory");
     ensure_dir(&vigil_dir, "vigil state directory");
-
-    // Write protocol rules
-    write_protocol(&super::protocol_file()?);
 
     // Write default config
     let config_path = super::config_file()?;

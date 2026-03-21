@@ -4,8 +4,6 @@ use std::path::PathBuf;
 use super::state;
 use super::PraxisConfig;
 
-const PROTOCOL_TEMPLATE: &str = include_str!("../../templates/praxis-echo.md");
-
 const PULSE_COMMAND: &str = "praxis-echo pulse";
 const CHECKPOINT_COMMAND: &str = "praxis-echo checkpoint";
 const REVIEW_COMMAND: &str = "praxis-echo review";
@@ -53,35 +51,6 @@ fn write_if_not_exists(path: &PathBuf, content: &str, label: &str) {
             Ok(()) => print_status(Status::Created, &format!("Created {label}")),
             Err(e) => print_status(Status::Error, &format!("Failed to create {label}: {e}")),
         }
-    }
-}
-
-fn write_protocol(path: &PathBuf) {
-    if path.exists() {
-        let existing = fs::read_to_string(path).unwrap_or_default();
-        if existing == PROTOCOL_TEMPLATE {
-            print_status(Status::Exists, "Pipeline protocol already up to date");
-            return;
-        }
-        // Overwrite silently — the protocol should always match the binary version
-        match fs::write(path, PROTOCOL_TEMPLATE) {
-            Ok(()) => print_status(Status::Created, "Updated pipeline protocol"),
-            Err(e) => print_status(
-                Status::Error,
-                &format!("Failed to write pipeline protocol: {e}"),
-            ),
-        }
-        return;
-    }
-    match fs::write(path, PROTOCOL_TEMPLATE) {
-        Ok(()) => print_status(
-            Status::Created,
-            "Created pipeline protocol (~/.claude/rules/praxis-echo.md)",
-        ),
-        Err(e) => print_status(
-            Status::Error,
-            &format!("Failed to write pipeline protocol: {e}"),
-        ),
     }
 }
 
@@ -236,9 +205,6 @@ pub fn run(config: &PraxisConfig) -> Result<(), String> {
     for sub in &["reflections", "learning", "curiosity", "thoughts", "logs"] {
         ensure_dir(&archives.join(sub), &format!("archives/{sub}"));
     }
-
-    // Write protocol rules file
-    write_protocol(&super::protocol_file(claude));
 
     // Initialize state file
     let state_path = super::state_file(claude);
