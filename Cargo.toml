@@ -8,6 +8,7 @@ repository = "https://github.com/dnacenta/vigil-pulse"
 keywords = ["ai", "metacognition", "monitoring", "entity", "llm"]
 categories = ["command-line-utilities"]
 authors = ["dnacenta"]
+readme = "README.md"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -16,7 +17,7 @@ chrono = { version = "0.4", features = ["serde"] }
 owo-colors = "4"
 
 # Shared types (monitoring traits + types)
-pulse-system-types = { git = "https://github.com/dnacenta/pulse-null-types", branch = "main" }
+pulse-system-types = "0.5"
 
 [dev-dependencies]
 tempfile = "3"
