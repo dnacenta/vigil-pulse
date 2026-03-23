@@ -38,7 +38,7 @@ pub fn docs_dir() -> Result<PathBuf, String> {
         return Ok(PathBuf::from(p));
     }
     std::env::var("HOME")
-        .map(PathBuf::from)
+        .map(|h| PathBuf::from(h).join("entity").join("journal"))
         .map_err(|_| "Could not determine home directory".to_string())
 }
 
