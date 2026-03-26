@@ -121,7 +121,6 @@ vigil-pulse is a core dependency of [pulse-null](https://github.com/dnacenta/pul
 | [pulse-null](https://github.com/dnacenta/pulse-null) | Entity framework |
 | [recall-echo](https://github.com/dnacenta/recall-echo) | Memory system |
 | **vigil-pulse** | Metacognitive monitoring |
-| [chat-echo](https://github.com/dnacenta/chat-echo) | Chat interface |
 | [pulse-system-types](https://github.com/dnacenta/pulse-null-types) | Shared contracts |
 
 ## License
