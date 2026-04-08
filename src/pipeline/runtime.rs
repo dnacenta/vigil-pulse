@@ -1,9 +1,9 @@
-//! Runtime pipeline health and state management for echo-system.
+//! Runtime pipeline health and state management for vigil-pulse.
 //!
 //! This module provides pipeline health calculation, state tracking,
-//! document archiving, and health rendering functions that echo-system's
+//! document archiving, and health rendering functions that pulse-null's
 //! scheduler and CLI call directly. Functions accept path and threshold
-//! parameters rather than depending on echo-system config types.
+//! parameters rather than depending on pulse-null config types.
 
 use std::path::Path;
 

@@ -6,7 +6,7 @@ description = "Metacognitive monitoring for AI entities — pipeline enforcement
 license = "AGPL-3.0-only"
 repository = "https://github.com/dnacenta/vigil-pulse"
 keywords = ["ai", "metacognition", "monitoring", "entity", "llm"]
-categories = ["command-line-utilities"]
+categories = ["science"]
 authors = ["dnacenta"]
 readme = "README.md"
 

@@ -154,7 +154,7 @@ pub fn load_history(claude_dir: &Path) -> Vec<PipelineSnapshot> {
         .collect()
 }
 
-/// Load outcome records from pulse-echo's storage.
+/// Load outcome records from the caliber outcomes store.
 fn load_outcomes(docs_dir: &Path) -> Vec<OutcomeRecord> {
     let path = docs_dir.join("pulse/outcomes.json");
     let content = match fs::read_to_string(&path) {
@@ -162,7 +162,7 @@ fn load_outcomes(docs_dir: &Path) -> Vec<OutcomeRecord> {
         Err(_) => return Vec::new(),
     };
 
-    // pulse-echo stores outcomes wrapped in {"outcomes": [...]}
+    // Outcomes may be wrapped in {"outcomes": [...]}
     #[derive(serde::Deserialize)]
     struct Wrapper {
         outcomes: Vec<OutcomeRecord>,

@@ -103,9 +103,6 @@ vigil-pulse/
 │       ├── outcome.rs      # Outcome classification and inference
 │       ├── runtime.rs      # Outcome recording and analysis
 │       └── state.rs        # Outcome persistence
-└── templates/
-    ├── praxis-echo.md      # Pipeline enforcement protocol template
-    └── vigil-echo.md       # Monitoring protocol template
 ```
 
 ## Dependencies

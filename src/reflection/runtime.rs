@@ -1,7 +1,7 @@
 //! Runtime signal extraction and cognitive health assessment.
 //!
 //! This module provides signal extraction from LLM response text,
-//! signal persistence, and cognitive health assessment for echo-system's
+//! signal persistence, and cognitive health assessment for pulse-null's
 //! scheduler. Unlike the document-based signals in [`super::signals`],
 //! these functions analyze the quality of individual LLM outputs.
 
