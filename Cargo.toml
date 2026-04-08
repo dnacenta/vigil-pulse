@@ -1,6 +1,6 @@
 [package]
 name = "vigil-pulse"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Metacognitive monitoring for AI entities — pipeline enforcement, reflection quality, outcome tracking"
 license = "AGPL-3.0-only"
