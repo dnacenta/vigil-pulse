@@ -11,6 +11,7 @@ const SIGNAL_NAMES: [&str; 4] = [
 ];
 
 const SPARKLINE_WIDTH: usize = 20;
+const AMPLITUDE_WINDOW: usize = 5;
 
 pub fn run(json_output: bool) -> Result<(), String> {
     let config = state::load_config()?;
@@ -121,7 +122,12 @@ fn print_status_line(analysis: &Option<Analysis>, data_points: usize, window: us
 fn print_signal_row(name: &str, history: &[SignalVector], analysis: &Option<Analysis>) {
     let series = stats::signal_series(history, name);
     let current = series.last().copied();
-    let spark = stats::sparkline(&series, SPARKLINE_WIDTH);
+    let amplitude = stats::rolling_amplitude(&series, AMPLITUDE_WINDOW);
+    let spark = if amplitude.is_empty() {
+        stats::sparkline(&series, SPARKLINE_WIDTH)
+    } else {
+        stats::sparkline(&amplitude, SPARKLINE_WIDTH)
+    };
 
     // Color the value based on health thresholds
     let val_str = match current {
@@ -270,9 +276,11 @@ fn print_json(
         sig.insert("current".into(), json_opt(current));
         sig.insert("mean".into(), json_opt(stats::mean(&series)));
         sig.insert("std_dev".into(), json_opt(stats::std_dev(&series)));
+        let amplitude = stats::rolling_amplitude(&series, AMPLITUDE_WINDOW);
+        let spark_series = if amplitude.is_empty() { &series } else { &amplitude };
         sig.insert(
             "sparkline".into(),
-            serde_json::Value::String(stats::sparkline(&series, SPARKLINE_WIDTH)),
+            serde_json::Value::String(stats::sparkline(spark_series, SPARKLINE_WIDTH)),
         );
 
         if let Some(v) = current {
