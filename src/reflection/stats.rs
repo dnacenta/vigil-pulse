@@ -95,6 +95,21 @@ pub fn streak(values: &[f64]) -> (i8, usize) {
     (direction, count)
 }
 
+/// Compute rolling standard deviation over a sliding window.
+/// Each output value represents the amplitude (variability) within that window.
+/// High values = active movement; low values = stagnation.
+pub fn rolling_amplitude(values: &[f64], window: usize) -> Vec<f64> {
+    if values.len() < window || window < 2 {
+        return Vec::new();
+    }
+    (0..=values.len() - window)
+        .map(|i| {
+            let slice = &values[i..i + window];
+            std_dev(slice).unwrap_or(0.0)
+        })
+        .collect()
+}
+
 /// Generate a sparkline string from a series of values.
 /// Maps values to Unicode block elements: ▁▂▃▄▅▆▇█
 pub fn sparkline(values: &[f64], width: usize) -> String {
@@ -224,6 +239,31 @@ mod tests {
         let (dir, count) = streak(&[5.0]);
         assert_eq!(dir, 0);
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn rolling_amplitude_basic() {
+        let vals = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let amp = rolling_amplitude(&vals, 3);
+        assert_eq!(amp.len(), 3); // 5 - 3 + 1
+        // Each window [1,2,3], [2,3,4], [3,4,5] has the same std dev
+        for v in &amp {
+            assert!((v - 0.8165).abs() < 0.01);
+        }
+    }
+
+    #[test]
+    fn rolling_amplitude_flat() {
+        let vals = vec![5.0, 5.0, 5.0, 5.0];
+        let amp = rolling_amplitude(&vals, 3);
+        assert!(amp.iter().all(|v| *v < f64::EPSILON));
+    }
+
+    #[test]
+    fn rolling_amplitude_too_short() {
+        assert!(rolling_amplitude(&[1.0, 2.0], 3).is_empty());
+        assert!(rolling_amplitude(&[1.0], 2).is_empty());
+        assert!(rolling_amplitude(&[], 3).is_empty());
     }
 
     #[test]
