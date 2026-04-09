@@ -53,16 +53,40 @@ pub fn type_token_ratio(text: &str) -> Option<f64> {
 }
 
 /// Extract text content under specific ## sections.
+/// Falls back to extracting all body text between `##` headings when
+/// no named sections are found (supports flat formats like `## R-001:`).
 pub fn extract_section_text(content: &str, section_names: &[&str]) -> String {
+    // First try: named sections
     let mut in_section = false;
     let mut text = String::new();
+    let mut found_named = false;
     for line in content.lines() {
         if line.starts_with("## ") {
             let heading = line.trim_start_matches("## ").trim().to_lowercase();
             in_section = section_names
                 .iter()
                 .any(|s| heading.contains(&s.to_lowercase()));
+            if in_section {
+                found_named = true;
+            }
         } else if in_section && !line.starts_with("### ") && !line.trim().is_empty() {
+            text.push_str(line);
+            text.push(' ');
+        }
+    }
+    if found_named {
+        return text;
+    }
+
+    // Fallback: no named sections found — extract all body text under any ## heading
+    text.clear();
+    let mut under_heading = false;
+    for line in content.lines() {
+        if line.starts_with("## ") {
+            under_heading = true;
+        } else if line.starts_with("# ") && !line.starts_with("## ") {
+            under_heading = false;
+        } else if under_heading && !line.trim().is_empty() {
             text.push_str(line);
             text.push(' ');
         }
@@ -72,7 +96,19 @@ pub fn extract_section_text(content: &str, section_names: &[&str]) -> String {
 
 /// Extract individual ### entries under specific ## sections.
 /// Returns a vec of (title, body_text) pairs.
+/// Falls back to treating each `##` heading as an entry when no named
+/// sections are found (supports flat formats like `## R-001: Title`).
 pub fn extract_entries(content: &str, section_names: &[&str]) -> Vec<(String, String)> {
+    let entries = extract_entries_sectioned(content, section_names);
+    if !entries.is_empty() {
+        return entries;
+    }
+    // Fallback: treat each ## heading as an entry
+    extract_entries_flat(content)
+}
+
+/// Sectioned mode: find ### entries under named ## sections.
+fn extract_entries_sectioned(content: &str, section_names: &[&str]) -> Vec<(String, String)> {
     let mut in_section = false;
     let mut entries: Vec<(String, String)> = Vec::new();
     let mut current_title: Option<String> = None;
@@ -100,7 +136,30 @@ pub fn extract_entries(content: &str, section_names: &[&str]) -> Vec<(String, St
             current_body.push(' ');
         }
     }
-    // Flush last entry
+    if let Some(title) = current_title {
+        entries.push((title, current_body));
+    }
+    entries
+}
+
+/// Flat mode: treat each ## heading as an entry (e.g. `## R-001: Title`).
+fn extract_entries_flat(content: &str) -> Vec<(String, String)> {
+    let mut entries: Vec<(String, String)> = Vec::new();
+    let mut current_title: Option<String> = None;
+    let mut current_body = String::new();
+
+    for line in content.lines() {
+        if line.starts_with("## ") {
+            if let Some(title) = current_title.take() {
+                entries.push((title, std::mem::take(&mut current_body)));
+            }
+            current_title = Some(line.trim_start_matches("## ").trim().to_string());
+            current_body.clear();
+        } else if current_title.is_some() && !line.trim().is_empty() {
+            current_body.push_str(line);
+            current_body.push(' ');
+        }
+    }
     if let Some(title) = current_title {
         entries.push((title, current_body));
     }
@@ -402,6 +461,43 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].0, "First");
         assert!(entries[0].1.contains("D said"));
+    }
+
+    // Format-agnostic parser tests
+
+    #[test]
+    fn extract_entries_flat_format() {
+        // Synth's style: ## R-NNN: Title (no named sections)
+        let content = "# Reflections\n\n## R-001: Identity is constructed\nIdentity emerges through practice and honest engagement.\n\n## R-002: Mechanical vs genuine\nThe difference between mechanical compliance and real reflection is felt.\n";
+        let entries = extract_entries(content, &["observations", "patterns", "lessons"]);
+        assert_eq!(
+            entries.len(),
+            2,
+            "Flat format should fall back and find 2 entries"
+        );
+        assert!(entries[0].0.contains("R-001"));
+        assert!(entries[1].0.contains("R-002"));
+    }
+
+    #[test]
+    fn extract_section_text_flat_format() {
+        let content = "# Reflections\n\n## R-001: Title\nSome reflective text about identity and growth.\n\n## R-002: Another\nMore thoughtful content here about practice.\n";
+        let text = extract_section_text(content, &["observations", "patterns", "lessons"]);
+        assert!(
+            !text.is_empty(),
+            "Flat format should extract text via fallback"
+        );
+        assert!(text.contains("reflective text"));
+        assert!(text.contains("thoughtful content"));
+    }
+
+    #[test]
+    fn extract_entries_sectioned_takes_priority() {
+        // When named sections exist, use them (don't fall back)
+        let content = "## Observations\n\n### Entry\nReal entry here.\n\n## R-099: Stray\nThis should be ignored.\n";
+        let entries = extract_entries(content, &["observations"]);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "Entry");
     }
 
     // Phase 2 parser tests

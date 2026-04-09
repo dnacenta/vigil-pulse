@@ -599,8 +599,8 @@ mod tests {
 
     #[test]
     fn conclusion_novelty_no_extractable_conclusions() {
-        // Content with entries under a section not in the extraction list
-        let content = "## Unrelated\n\n### Item\nSome text here.\n";
+        // Content with no ## headings at all — no entries extractable
+        let content = "Just some plain text with no headings.\n";
         assert!(conclusion_novelty(content, &[]).is_none());
     }
 
