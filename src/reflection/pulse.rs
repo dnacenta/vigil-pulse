@@ -1,5 +1,6 @@
 use owo_colors::OwoColorize;
 
+use super::friendly_name;
 use super::state::{self, AlertLevel, Trend};
 
 pub fn run() -> Result<(), String> {
@@ -82,16 +83,4 @@ pub fn run() -> Result<(), String> {
     Ok(())
 }
 
-fn friendly_name(name: &str) -> &str {
-    match name {
-        "vocabulary_diversity" => "vocabulary diversity",
-        "question_generation" => "question generation",
-        "thought_lifecycle" => "thought lifecycle",
-        "evidence_grounding" => "evidence grounding",
-        "conclusion_novelty" => "conclusion novelty",
-        "intellectual_honesty" => "intellectual honesty",
-        "position_delta" => "position delta",
-        "comfort_index" => "comfort index",
-        _ => name,
-    }
-}
+// friendly_name is imported from super::friendly_name

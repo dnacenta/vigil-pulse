@@ -85,6 +85,52 @@ pub fn self_file() -> Result<PathBuf, String> {
 }
 
 // ---------------------------------------------------------------------------
+// Shared signal constants (single source of truth)
+// ---------------------------------------------------------------------------
+
+/// All tracked signal names. Update this when adding new signals.
+pub const SIGNAL_NAMES: &[&str] = &[
+    "vocabulary_diversity",
+    "question_generation",
+    "thought_lifecycle",
+    "evidence_grounding",
+    "conclusion_novelty",
+    "intellectual_honesty",
+    "position_delta",
+    "comfort_index",
+];
+
+/// Human-readable display name for a signal.
+pub fn friendly_name(name: &str) -> &str {
+    match name {
+        "vocabulary_diversity" => "vocabulary diversity",
+        "question_generation" => "question generation",
+        "thought_lifecycle" => "thought lifecycle",
+        "evidence_grounding" => "evidence grounding",
+        "conclusion_novelty" => "conclusion novelty",
+        "intellectual_honesty" => "intellectual honesty",
+        "position_delta" => "position delta",
+        "comfort_index" => "comfort index",
+        _ => name,
+    }
+}
+
+/// Extract a signal value by name from a Signals struct.
+pub fn get_signal(signals: &state::Signals, name: &str) -> Option<f64> {
+    match name {
+        "vocabulary_diversity" => signals.vocabulary_diversity,
+        "question_generation" => signals.question_generation,
+        "thought_lifecycle" => signals.thought_lifecycle,
+        "evidence_grounding" => signals.evidence_grounding,
+        "conclusion_novelty" => signals.conclusion_novelty,
+        "intellectual_honesty" => signals.intellectual_honesty,
+        "position_delta" => signals.position_delta,
+        "comfort_index" => signals.comfort_index,
+        _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // VigilEcho — core struct
 // ---------------------------------------------------------------------------
 

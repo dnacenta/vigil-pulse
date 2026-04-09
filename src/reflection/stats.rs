@@ -1,3 +1,4 @@
+use super::get_signal;
 use super::state::SignalVector;
 
 const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
@@ -6,17 +7,7 @@ const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█
 pub fn signal_series(history: &[SignalVector], name: &str) -> Vec<f64> {
     history
         .iter()
-        .filter_map(|sv| match name {
-            "vocabulary_diversity" => sv.signals.vocabulary_diversity,
-            "question_generation" => sv.signals.question_generation,
-            "thought_lifecycle" => sv.signals.thought_lifecycle,
-            "evidence_grounding" => sv.signals.evidence_grounding,
-            "conclusion_novelty" => sv.signals.conclusion_novelty,
-            "intellectual_honesty" => sv.signals.intellectual_honesty,
-            "position_delta" => sv.signals.position_delta,
-            "comfort_index" => sv.signals.comfort_index,
-            _ => None,
-        })
+        .filter_map(|sv| get_signal(&sv.signals, name))
         .collect()
 }
 

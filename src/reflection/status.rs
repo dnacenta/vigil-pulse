@@ -2,17 +2,7 @@ use owo_colors::OwoColorize;
 
 use super::state::{self, AlertLevel, Analysis, Config, SignalVector, Trend};
 use super::stats;
-
-const SIGNAL_NAMES: [&str; 8] = [
-    "vocabulary_diversity",
-    "question_generation",
-    "thought_lifecycle",
-    "evidence_grounding",
-    "conclusion_novelty",
-    "intellectual_honesty",
-    "position_delta",
-    "comfort_index",
-];
+use super::{friendly_name, SIGNAL_NAMES};
 
 const SPARKLINE_WIDTH: usize = 20;
 
@@ -47,7 +37,7 @@ fn print_dashboard(
     if history.is_empty() {
         println!("    No signals collected yet. Run `vigil-echo collect` after a session.");
     } else {
-        for &name in &SIGNAL_NAMES {
+        for &name in SIGNAL_NAMES {
             print_signal_row(name, history, analysis);
         }
     }
@@ -56,7 +46,7 @@ fn print_dashboard(
     if history.len() >= 3 {
         println!();
         println!("  {}", "Statistics".bold());
-        for &name in &SIGNAL_NAMES {
+        for &name in SIGNAL_NAMES {
             print_stats_row(name, history);
         }
     }
@@ -220,7 +210,7 @@ fn print_stats_row(name: &str, history: &[SignalVector]) {
 
 fn detect_anomalies(history: &[SignalVector]) -> Vec<String> {
     let mut anomalies = Vec::new();
-    for &name in &SIGNAL_NAMES {
+    for &name in SIGNAL_NAMES {
         let series = stats::signal_series(history, name);
         if series.len() < 5 {
             continue;
@@ -266,7 +256,7 @@ fn print_json(
 
     // Per-signal stats
     let mut signals_json = serde_json::Map::new();
-    for &name in &SIGNAL_NAMES {
+    for &name in SIGNAL_NAMES {
         let series = stats::signal_series(history, name);
         let mut sig = serde_json::Map::new();
 
@@ -434,16 +424,4 @@ fn threshold_zone(value: f64, red_below: f64, yellow_below: f64) -> Zone {
     }
 }
 
-fn friendly_name(name: &str) -> &str {
-    match name {
-        "vocabulary_diversity" => "vocabulary diversity",
-        "question_generation" => "question generation",
-        "thought_lifecycle" => "thought lifecycle",
-        "evidence_grounding" => "evidence grounding",
-        "conclusion_novelty" => "conclusion novelty",
-        "intellectual_honesty" => "intellectual honesty",
-        "position_delta" => "position delta",
-        "comfort_index" => "comfort index",
-        _ => name,
-    }
-}
+// friendly_name is imported from super::friendly_name

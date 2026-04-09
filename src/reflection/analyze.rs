@@ -1,31 +1,11 @@
 use std::collections::HashMap;
 
 use super::state::{AlertLevel, Analysis, Config, SignalTrend, SignalVector, Trend};
-
-const SIGNAL_NAMES: &[&str] = &[
-    "vocabulary_diversity",
-    "question_generation",
-    "thought_lifecycle",
-    "evidence_grounding",
-    "conclusion_novelty",
-    "intellectual_honesty",
-    "position_delta",
-    "comfort_index",
-];
+use super::{friendly_name, get_signal as get_signal_value, SIGNAL_NAMES};
 
 /// Extract a signal value by name from a SignalVector.
 fn get_signal(sv: &SignalVector, name: &str) -> Option<f64> {
-    match name {
-        "vocabulary_diversity" => sv.signals.vocabulary_diversity,
-        "question_generation" => sv.signals.question_generation,
-        "thought_lifecycle" => sv.signals.thought_lifecycle,
-        "evidence_grounding" => sv.signals.evidence_grounding,
-        "conclusion_novelty" => sv.signals.conclusion_novelty,
-        "intellectual_honesty" => sv.signals.intellectual_honesty,
-        "position_delta" => sv.signals.position_delta,
-        "comfort_index" => sv.signals.comfort_index,
-        _ => None,
-    }
+    get_signal_value(&sv.signals, name)
 }
 
 /// Compute mean of values, skipping None.
@@ -217,20 +197,6 @@ fn decline_message(name: &str, current: Option<f64>, delta: f64) -> String {
             val, delta
         ),
         _ => format!("{} at {} ({:+.2})", name, val, delta),
-    }
-}
-
-fn friendly_name(name: &str) -> &str {
-    match name {
-        "vocabulary_diversity" => "vocabulary diversity",
-        "question_generation" => "question generation",
-        "thought_lifecycle" => "thought lifecycle",
-        "evidence_grounding" => "evidence grounding",
-        "conclusion_novelty" => "conclusion novelty",
-        "intellectual_honesty" => "intellectual honesty",
-        "position_delta" => "position delta",
-        "comfort_index" => "comfort index",
-        _ => name,
     }
 }
 
