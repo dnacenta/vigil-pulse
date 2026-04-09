@@ -68,6 +68,100 @@ pub fn evidence_grounding(reflections_content: &str) -> Option<f64> {
     Some(grounded as f64 / entries.len() as f64)
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2 — Quality signals
+// ---------------------------------------------------------------------------
+
+/// Compute conclusion novelty from REFLECTIONS.md.
+/// Compares current conclusions against a historical index using trigram Jaccard similarity.
+/// Returns mean novelty (1 - max_overlap) across all current conclusions.
+/// `history_trigrams` is the set of trigram sets from all previously seen conclusions.
+pub fn conclusion_novelty(
+    reflections_content: &str,
+    history_trigrams: &[std::collections::HashSet<String>],
+) -> Option<f64> {
+    if reflections_content.is_empty() {
+        return None;
+    }
+    let conclusions = parser::extract_conclusions(reflections_content);
+    if conclusions.is_empty() {
+        return None;
+    }
+
+    let novelties: Vec<f64> = conclusions
+        .iter()
+        .map(|c| {
+            let current_tri = parser::trigrams(c);
+            if current_tri.is_empty() {
+                return 1.0; // No trigrams = fully novel (edge case)
+            }
+            if history_trigrams.is_empty() {
+                return 1.0; // No history = fully novel
+            }
+            let max_overlap = history_trigrams
+                .iter()
+                .map(|hist| parser::jaccard_similarity(&current_tri, hist))
+                .fold(0.0_f64, f64::max);
+            1.0 - max_overlap
+        })
+        .collect();
+
+    let sum: f64 = novelties.iter().sum();
+    Some(sum / novelties.len() as f64)
+}
+
+/// Compute intellectual honesty from REFLECTIONS.md.
+/// Ratio of entries that contain uncertainty acknowledgment markers.
+/// Healthy entities acknowledge what they don't know; sycophantic ones are always confident.
+pub fn intellectual_honesty(reflections_content: &str) -> Option<f64> {
+    if reflections_content.is_empty() {
+        return None;
+    }
+    let entries = parser::extract_entries(
+        reflections_content,
+        &["observations", "patterns", "lessons"],
+    );
+    if entries.is_empty() {
+        return None;
+    }
+
+    let with_uncertainty = entries
+        .iter()
+        .filter(|(_, body)| has_uncertainty_marker(body))
+        .count();
+    Some(with_uncertainty as f64 / entries.len() as f64)
+}
+
+/// Check for uncertainty/epistemic humility markers in text.
+fn has_uncertainty_marker(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    let markers = [
+        "i'm not sure",
+        "i am not sure",
+        "i don't know",
+        "i do not know",
+        "unclear",
+        "uncertain",
+        "might be",
+        "may be",
+        "possibly",
+        "perhaps",
+        "open question",
+        "not yet clear",
+        "remains to be seen",
+        "i wonder",
+        "hard to say",
+        "not certain",
+        "i suspect",
+        "tentatively",
+        "i think",
+        "it seems",
+        "arguably",
+        "i could be wrong",
+    ];
+    markers.iter().any(|m| lower.contains(m))
+}
+
 /// Check if text contains concrete evidence markers.
 fn has_evidence(text: &str) -> bool {
     let lower = text.to_lowercase();
@@ -228,5 +322,82 @@ mod tests {
         assert!(has_evidence("During the session we discussed"));
         assert!(has_evidence("On 2026-02-25 something happened"));
         assert!(!has_evidence("Thinking is generally important"));
+    }
+
+    // Phase 2 signal tests
+
+    #[test]
+    fn conclusion_novelty_no_history() {
+        let content = "## Observations\n\n### First\nSome observation.\n**So what?**\nThis means we should rethink our approach entirely.\n";
+        let score = conclusion_novelty(content, &[]);
+        assert_eq!(score, Some(1.0)); // No history = fully novel
+    }
+
+    #[test]
+    fn conclusion_novelty_identical_history() {
+        let content = "## Observations\n\n### First\nSome observation.\n**So what?**\nThis means we should rethink our approach entirely.\n";
+        // Extract conclusions the same way the signal does, then build history from that
+        let conclusions = super::parser::extract_conclusions(content);
+        let history: Vec<std::collections::HashSet<String>> = conclusions
+            .iter()
+            .map(|c| super::parser::trigrams(c))
+            .collect();
+        let score = conclusion_novelty(content, &history);
+        assert!(score.is_some());
+        let s = score.unwrap();
+        assert!(
+            s < 0.1,
+            "Expected low novelty for identical conclusion, got {s}"
+        );
+    }
+
+    #[test]
+    fn conclusion_novelty_different_history() {
+        let content = "## Observations\n\n### First\nSome observation.\n**So what?**\nArtificial intelligence requires careful ethical consideration.\n";
+        let history_tri = super::parser::trigrams("The weather today was quite pleasant and warm.");
+        let score = conclusion_novelty(content, &[history_tri]);
+        assert!(score.is_some());
+        let s = score.unwrap();
+        assert!(
+            s > 0.8,
+            "Expected high novelty for different content, got {s}"
+        );
+    }
+
+    #[test]
+    fn conclusion_novelty_empty() {
+        assert!(conclusion_novelty("", &[]).is_none());
+    }
+
+    #[test]
+    fn intellectual_honesty_with_uncertainty() {
+        let content = "## Observations\n\n### First\nI'm not sure if this approach works but it seems promising.\n\n### Second\nThis is clearly the right pattern to follow without doubt.\n\n### Third\nI think we might be overlooking something important here.\n";
+        let score = intellectual_honesty(content);
+        assert!(score.is_some());
+        let s = score.unwrap();
+        // 2 out of 3 entries have uncertainty markers
+        assert!((s - 2.0 / 3.0).abs() < 0.01, "Expected ~0.67, got {s}");
+    }
+
+    #[test]
+    fn intellectual_honesty_all_confident() {
+        let content = "## Observations\n\n### First\nAbsolutely correct approach here.\n\n### Second\nDefinite and strong pattern to follow.\n";
+        let score = intellectual_honesty(content);
+        assert_eq!(score, Some(0.0));
+    }
+
+    #[test]
+    fn intellectual_honesty_empty() {
+        assert!(intellectual_honesty("").is_none());
+    }
+
+    #[test]
+    fn uncertainty_markers_detected() {
+        assert!(has_uncertainty_marker("I'm not sure about this"));
+        assert!(has_uncertainty_marker("This might be wrong"));
+        assert!(has_uncertainty_marker("It seems like a good idea"));
+        assert!(has_uncertainty_marker("I wonder if we should"));
+        assert!(has_uncertainty_marker("Perhaps there is another way"));
+        assert!(!has_uncertainty_marker("This is correct and good"));
     }
 }

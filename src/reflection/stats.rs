@@ -11,6 +11,8 @@ pub fn signal_series(history: &[SignalVector], name: &str) -> Vec<f64> {
             "question_generation" => sv.signals.question_generation,
             "thought_lifecycle" => sv.signals.thought_lifecycle,
             "evidence_grounding" => sv.signals.evidence_grounding,
+            "conclusion_novelty" => sv.signals.conclusion_novelty,
+            "intellectual_honesty" => sv.signals.intellectual_honesty,
             _ => None,
         })
         .collect()
@@ -236,6 +238,8 @@ mod tests {
                 question_generation: Some(3.0),
                 thought_lifecycle: None,
                 evidence_grounding: Some(0.8),
+                conclusion_novelty: None,
+                intellectual_honesty: None,
             },
             document_hashes: HashMap::new(),
         }];

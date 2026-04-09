@@ -88,6 +88,8 @@ fn friendly_name(name: &str) -> &str {
         "question_generation" => "question generation",
         "thought_lifecycle" => "thought lifecycle",
         "evidence_grounding" => "evidence grounding",
+        "conclusion_novelty" => "conclusion novelty",
+        "intellectual_honesty" => "intellectual honesty",
         _ => name,
     }
 }

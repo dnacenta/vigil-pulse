@@ -3,11 +3,13 @@ use owo_colors::OwoColorize;
 use super::state::{self, AlertLevel, Analysis, Config, SignalVector, Trend};
 use super::stats;
 
-const SIGNAL_NAMES: [&str; 4] = [
+const SIGNAL_NAMES: [&str; 6] = [
     "vocabulary_diversity",
     "question_generation",
     "thought_lifecycle",
     "evidence_grounding",
+    "conclusion_novelty",
+    "intellectual_honesty",
 ];
 
 const SPARKLINE_WIDTH: usize = 20;
@@ -388,13 +390,27 @@ enum Zone {
 }
 
 fn signal_zone(name: &str, value: f64) -> Zone {
-    let (red_below, yellow_below) = match name {
-        "vocabulary_diversity" => (0.25, 0.40),
-        "question_generation" => (2.0, 4.0),
-        "thought_lifecycle" => (0.15, 0.30),
-        "evidence_grounding" => (0.40, 0.60),
-        _ => (0.25, 0.50),
-    };
+    match name {
+        "vocabulary_diversity" => threshold_zone(value, 0.25, 0.40),
+        "question_generation" => threshold_zone(value, 2.0, 4.0),
+        "thought_lifecycle" => threshold_zone(value, 0.15, 0.30),
+        "evidence_grounding" => threshold_zone(value, 0.40, 0.60),
+        "conclusion_novelty" => threshold_zone(value, 0.30, 0.50),
+        // intellectual_honesty: both extremes are bad (never uncertain OR always uncertain)
+        "intellectual_honesty" => {
+            if !(0.20..=0.80).contains(&value) {
+                Zone::Concern
+            } else if !(0.30..=0.70).contains(&value) {
+                Zone::Watch
+            } else {
+                Zone::Healthy
+            }
+        }
+        _ => threshold_zone(value, 0.25, 0.50),
+    }
+}
+
+fn threshold_zone(value: f64, red_below: f64, yellow_below: f64) -> Zone {
     if value < red_below {
         Zone::Concern
     } else if value < yellow_below {
@@ -410,6 +426,8 @@ fn friendly_name(name: &str) -> &str {
         "question_generation" => "question generation",
         "thought_lifecycle" => "thought lifecycle",
         "evidence_grounding" => "evidence grounding",
+        "conclusion_novelty" => "conclusion novelty",
+        "intellectual_honesty" => "intellectual honesty",
         _ => name,
     }
 }

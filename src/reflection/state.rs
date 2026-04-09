@@ -13,13 +13,19 @@ pub struct SignalVector {
     pub document_hashes: HashMap<String, String>,
 }
 
-/// The 4 Phase-1 signals. Null means document was missing.
+/// Cognitive quality signals. Null means document was missing or not enough data.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Signals {
+    // Phase 1 — activity signals
     pub vocabulary_diversity: Option<f64>,
     pub question_generation: Option<f64>,
     pub thought_lifecycle: Option<f64>,
     pub evidence_grounding: Option<f64>,
+    // Phase 2 — quality signals
+    #[serde(default)]
+    pub conclusion_novelty: Option<f64>,
+    #[serde(default)]
+    pub intellectual_honesty: Option<f64>,
 }
 
 /// Per-signal trend direction.
@@ -108,6 +114,20 @@ impl Default for Config {
                 improve: 0.10,
             },
         );
+        thresholds.insert(
+            "conclusion_novelty".to_string(),
+            ThresholdPair {
+                decline: -0.10,
+                improve: 0.10,
+            },
+        );
+        thresholds.insert(
+            "intellectual_honesty".to_string(),
+            ThresholdPair {
+                decline: -0.10,
+                improve: 0.10,
+            },
+        );
         Config {
             thresholds,
             window_size: 10,
@@ -122,6 +142,18 @@ impl Default for Config {
 #[derive(Serialize, Deserialize, Default)]
 pub struct PulseState {
     pub last_pulse: Option<String>,
+}
+
+/// Persistent conclusion index for novelty comparison.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct ConclusionIndex {
+    pub entries: Vec<ConclusionEntry>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ConclusionEntry {
+    pub timestamp: String,
+    pub trigrams: Vec<String>,
 }
 
 // --- Load/save helpers ---
@@ -192,6 +224,29 @@ pub fn save_pulse_state(state: &PulseState) -> Result<(), String> {
     let json = serde_json::to_string_pretty(state)
         .map_err(|e| format!("Failed to serialize pulse state: {e}"))?;
     fs::write(path, format!("{json}\n")).map_err(|e| format!("Failed to write pulse state: {e}"))
+}
+
+pub fn conclusion_index_file() -> Result<std::path::PathBuf, String> {
+    let dir = super::vigil_dir()?;
+    Ok(dir.join("conclusion-index.json"))
+}
+
+pub fn load_conclusion_index() -> Result<ConclusionIndex, String> {
+    let path = conclusion_index_file()?;
+    if !path.exists() {
+        return Ok(ConclusionIndex::default());
+    }
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read conclusion index: {e}"))?;
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse conclusion index: {e}"))
+}
+
+pub fn save_conclusion_index(index: &ConclusionIndex) -> Result<(), String> {
+    let path = conclusion_index_file()?;
+    let json = serde_json::to_string_pretty(index)
+        .map_err(|e| format!("Failed to serialize conclusion index: {e}"))?;
+    fs::write(path, format!("{json}\n"))
+        .map_err(|e| format!("Failed to write conclusion index: {e}"))
 }
 
 // --- Timestamp helpers (no chrono dependency) ---

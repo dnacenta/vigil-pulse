@@ -7,6 +7,8 @@ const SIGNAL_NAMES: &[&str] = &[
     "question_generation",
     "thought_lifecycle",
     "evidence_grounding",
+    "conclusion_novelty",
+    "intellectual_honesty",
 ];
 
 /// Extract a signal value by name from a SignalVector.
@@ -16,6 +18,8 @@ fn get_signal(sv: &SignalVector, name: &str) -> Option<f64> {
         "question_generation" => sv.signals.question_generation,
         "thought_lifecycle" => sv.signals.thought_lifecycle,
         "evidence_grounding" => sv.signals.evidence_grounding,
+        "conclusion_novelty" => sv.signals.conclusion_novelty,
+        "intellectual_honesty" => sv.signals.intellectual_honesty,
         _ => None,
     }
 }
@@ -192,6 +196,14 @@ fn decline_message(name: &str, current: Option<f64>, delta: f64) -> String {
             "evidence_grounding at {} ({:+.2}) — conclusions drifting from concrete inputs",
             val, delta
         ),
+        "conclusion_novelty" => format!(
+            "conclusion_novelty at {} ({:+.2}) — conclusions rehashing previous reflections",
+            val, delta
+        ),
+        "intellectual_honesty" => format!(
+            "intellectual_honesty at {} ({:+.2}) — uncertainty acknowledgment shifting",
+            val, delta
+        ),
         _ => format!("{} at {} ({:+.2})", name, val, delta),
     }
 }
@@ -202,6 +214,8 @@ fn friendly_name(name: &str) -> &str {
         "question_generation" => "question generation",
         "thought_lifecycle" => "thought lifecycle",
         "evidence_grounding" => "evidence grounding",
+        "conclusion_novelty" => "conclusion novelty",
+        "intellectual_honesty" => "intellectual honesty",
         _ => name,
     }
 }
@@ -220,6 +234,8 @@ mod tests {
                 question_generation: Some(qg),
                 thought_lifecycle: Some(tl),
                 evidence_grounding: Some(eg),
+                conclusion_novelty: None,
+                intellectual_honesty: None,
             },
             document_hashes: HashMap::new(),
         }

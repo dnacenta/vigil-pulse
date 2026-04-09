@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use owo_colors::OwoColorize;
 
@@ -9,13 +9,26 @@ pub fn run(trigger: &str) -> Result<(), String> {
     let thoughts_content = parser::read_or_empty(&super::thoughts_file()?);
     let curiosity_content = parser::read_or_empty(&super::curiosity_file()?);
 
+    // Load conclusion index for novelty comparison
+    let conclusion_index = state::load_conclusion_index()?;
+    let history_trigrams: Vec<HashSet<String>> = conclusion_index
+        .entries
+        .iter()
+        .map(|e| e.trigrams.iter().cloned().collect())
+        .collect();
+
     // Extract signals
     let sigs = state::Signals {
         vocabulary_diversity: signals::vocabulary_diversity(&reflections_content),
         question_generation: signals::question_generation(&curiosity_content),
         thought_lifecycle: signals::thought_lifecycle(&thoughts_content),
         evidence_grounding: signals::evidence_grounding(&reflections_content),
+        conclusion_novelty: signals::conclusion_novelty(&reflections_content, &history_trigrams),
+        intellectual_honesty: signals::intellectual_honesty(&reflections_content),
     };
+
+    // Append current conclusions to the index (append-only)
+    update_conclusion_index(&reflections_content, &conclusion_index)?;
 
     // Document hashes for change detection
     let mut hashes = HashMap::new();
@@ -59,6 +72,8 @@ pub fn run(trigger: &str) -> Result<(), String> {
     print_signal("  question_generation", sigs.question_generation);
     print_signal("  thought_lifecycle", sigs.thought_lifecycle);
     print_signal("  evidence_grounding", sigs.evidence_grounding);
+    print_signal("  conclusion_novelty", sigs.conclusion_novelty);
+    print_signal("  intellectual_honesty", sigs.intellectual_honesty);
     println!(
         "  History: {} data points ({} max)",
         history.len(),
@@ -66,6 +81,33 @@ pub fn run(trigger: &str) -> Result<(), String> {
     );
 
     Ok(())
+}
+
+/// Append current conclusions to the persistent index for future novelty comparison.
+fn update_conclusion_index(
+    reflections_content: &str,
+    existing: &state::ConclusionIndex,
+) -> Result<(), String> {
+    let conclusions = parser::extract_conclusions(reflections_content);
+    if conclusions.is_empty() {
+        return Ok(());
+    }
+
+    let mut index = existing.clone();
+    let timestamp = state::now_iso();
+
+    for conclusion in &conclusions {
+        let tri = parser::trigrams(conclusion);
+        if tri.is_empty() {
+            continue;
+        }
+        index.entries.push(state::ConclusionEntry {
+            timestamp: timestamp.clone(),
+            trigrams: tri.into_iter().collect(),
+        });
+    }
+
+    state::save_conclusion_index(&index)
 }
 
 fn print_signal(label: &str, value: Option<f64>) {
