@@ -115,21 +115,18 @@ pub fn extract_conclusions(content: &str) -> Vec<String> {
     let mut conclusions = Vec::new();
 
     for (_title, body) in &entries {
-        // Look for "**So what?**" or "So what?" marker
+        // Look for "**So what?**" or "So what?" marker.
+        // Note: extract_entries joins body lines with spaces, so the body
+        // is a single line. We find the marker and take everything after it.
         let lower = body.to_lowercase();
         if let Some(pos) = lower.find("so what?") {
-            // Find the marker in the original text and take everything after
-            let after = &body[pos..];
-            // Skip past the marker line
-            let text = after
-                .lines()
-                .skip(1)
-                .collect::<Vec<_>>()
-                .join(" ")
-                .trim()
-                .to_string();
-            if !text.is_empty() {
-                conclusions.push(text);
+            let marker_end = pos + "so what?".len();
+            let after = body[marker_end..]
+                .trim_start_matches('*')
+                .trim_start_matches(':')
+                .trim();
+            if !after.is_empty() {
+                conclusions.push(after.to_string());
                 continue;
             }
         }

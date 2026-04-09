@@ -400,4 +400,11 @@ mod tests {
         assert!(has_uncertainty_marker("Perhaps there is another way"));
         assert!(!has_uncertainty_marker("This is correct and good"));
     }
+
+    #[test]
+    fn conclusion_novelty_no_extractable_conclusions() {
+        // Content with entries under a section not in the extraction list
+        let content = "## Unrelated\n\n### Item\nSome text here.\n";
+        assert!(conclusion_novelty(content, &[]).is_none());
+    }
 }

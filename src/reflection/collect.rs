@@ -83,7 +83,12 @@ pub fn run(trigger: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Maximum entries in the conclusion index before trimming oldest.
+const MAX_CONCLUSION_ENTRIES: usize = 500;
+
 /// Append current conclusions to the persistent index for future novelty comparison.
+/// Deduplicates against existing entries (skips if Jaccard > 0.95) and trims to
+/// MAX_CONCLUSION_ENTRIES to prevent unbounded growth.
 fn update_conclusion_index(
     reflections_content: &str,
     existing: &state::ConclusionIndex,
@@ -96,15 +101,37 @@ fn update_conclusion_index(
     let mut index = existing.clone();
     let timestamp = state::now_iso();
 
+    // Build existing trigram sets for dedup comparison
+    let existing_sets: Vec<HashSet<String>> = index
+        .entries
+        .iter()
+        .map(|e| e.trigrams.iter().cloned().collect())
+        .collect();
+
     for conclusion in &conclusions {
         let tri = parser::trigrams(conclusion);
         if tri.is_empty() {
             continue;
         }
+        // Skip if this conclusion is a near-duplicate of an existing entry
+        let is_duplicate = existing_sets
+            .iter()
+            .any(|existing| parser::jaccard_similarity(&tri, existing) > 0.95);
+        if is_duplicate {
+            continue;
+        }
+        let mut sorted: Vec<String> = tri.into_iter().collect();
+        sorted.sort();
         index.entries.push(state::ConclusionEntry {
             timestamp: timestamp.clone(),
-            trigrams: tri.into_iter().collect(),
+            trigrams: sorted,
         });
+    }
+
+    // Trim oldest entries if over the cap
+    if index.entries.len() > MAX_CONCLUSION_ENTRIES {
+        let excess = index.entries.len() - MAX_CONCLUSION_ENTRIES;
+        index.entries.drain(..excess);
     }
 
     state::save_conclusion_index(&index)
