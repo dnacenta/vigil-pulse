@@ -8,11 +8,14 @@
 //!
 //! Each category can be used independently or together for a unified health assessment.
 
+pub mod error;
 pub mod outcomes;
 pub mod pipeline;
 pub mod reflection;
+pub mod util;
 
 // Re-export core types for convenience
+pub use error::{VpError, VpResult};
 pub use outcomes::CaliberEcho;
 pub use pipeline::{PraxisConfig, PraxisEcho};
 pub use reflection::VigilEcho;

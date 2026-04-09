@@ -1,7 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 
 use owo_colors::OwoColorize;
+
+use crate::error::{VpError, VpResult};
 
 const PULSE_COMMAND: &str = "vigil-echo pulse";
 const COLLECT_COMMAND: &str = "vigil-echo collect --trigger session-end";
@@ -20,7 +22,7 @@ fn print_status(status: Status, msg: &str) {
     }
 }
 
-fn ensure_dir(path: &PathBuf, label: &str) {
+fn ensure_dir(path: &Path, label: &str) {
     if path.exists() {
         print_status(Status::Exists, &format!("{label} already exists"));
     } else {
@@ -31,7 +33,7 @@ fn ensure_dir(path: &PathBuf, label: &str) {
     }
 }
 
-fn write_if_not_exists(path: &PathBuf, content: &str, label: &str) {
+fn write_if_not_exists(path: &Path, content: &str, label: &str) {
     if path.exists() {
         print_status(
             Status::Exists,
@@ -91,7 +93,7 @@ fn add_hook_entry(settings: &mut serde_json::Value, event: &str, command: &str) 
     event_arr.as_array_mut().unwrap().push(hook_entry);
 }
 
-fn merge_hooks(settings_path: &PathBuf) {
+fn merge_hooks(settings_path: &Path) {
     let mut settings: serde_json::Value = if settings_path.exists() {
         match fs::read_to_string(settings_path) {
             Ok(content) => match serde_json::from_str(&content) {
@@ -154,15 +156,15 @@ fn merge_hooks(settings_path: &PathBuf) {
     }
 }
 
-pub fn run() -> Result<(), String> {
-    let claude = super::claude_dir()?;
+pub fn run() -> VpResult<()> {
+    let claude = super::claude_dir().map_err(VpError::Config)?;
 
     if !claude.exists() {
-        return Err(
-            "~/.claude directory not found. Is Claude Code installed?\n  \
+        return Err(VpError::Config(
+            "~/.claude directory not found. Is Claude Code installed? \
              Install Claude Code first, then run this again."
                 .to_string(),
-        );
+        ));
     }
 
     println!(
@@ -171,25 +173,24 @@ pub fn run() -> Result<(), String> {
     );
 
     // Create directories
-    let rules_dir = super::rules_dir()?;
-    let vigil_dir = super::vigil_dir()?;
+    let rules_dir = super::rules_dir().map_err(VpError::Config)?;
+    let vigil_dir = super::vigil_dir().map_err(VpError::Config)?;
 
     ensure_dir(&rules_dir, "rules directory");
     ensure_dir(&vigil_dir, "vigil state directory");
 
     // Write default config
-    let config_path = super::config_file()?;
+    let config_path = super::config_file().map_err(VpError::Config)?;
     let default_config = super::state::Config::default();
-    let config_json = serde_json::to_string_pretty(&default_config)
-        .map_err(|e| format!("Failed to serialize config: {e}"))?;
+    let config_json = serde_json::to_string_pretty(&default_config)?;
     write_if_not_exists(&config_path, &format!("{config_json}\n"), "config.json");
 
     // Initialize empty signals history
-    let signals_path = super::signals_file()?;
+    let signals_path = super::signals_file().map_err(VpError::Config)?;
     write_if_not_exists(&signals_path, "[]\n", "signals.json");
 
     // Merge hooks into settings.json
-    merge_hooks(&super::settings_file()?);
+    merge_hooks(&super::settings_file().map_err(VpError::Config)?);
 
     // Summary
     println!(

@@ -1,7 +1,8 @@
 use super::parser;
 use super::PraxisConfig;
+use crate::error::VpResult;
 
-pub fn run(config: &PraxisConfig, format: &str) -> Result<(), String> {
+pub fn run(config: &PraxisConfig, format: &str) -> VpResult<()> {
     let scan = parser::scan_with_config(config);
 
     match format {
@@ -41,11 +42,7 @@ pub fn run(config: &PraxisConfig, format: &str) -> Result<(), String> {
                 }).collect::<Vec<_>>(),
                 "document_hashes": scan.document_hashes,
             });
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&output)
-                    .map_err(|e| format!("Failed to serialize: {e}"))?
-            );
+            println!("{}", serde_json::to_string_pretty(&output)?);
         }
         _ => {
             // Human-readable output

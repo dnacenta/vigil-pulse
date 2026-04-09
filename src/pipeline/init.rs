@@ -1,8 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 
 use super::state;
 use super::PraxisConfig;
+use crate::error::{VpError, VpResult};
 
 const PULSE_COMMAND: &str = "praxis-echo pulse";
 const CHECKPOINT_COMMAND: &str = "praxis-echo checkpoint";
@@ -29,7 +30,7 @@ fn print_status(status: Status, msg: &str) {
     }
 }
 
-fn ensure_dir(path: &PathBuf, label: &str) {
+fn ensure_dir(path: &Path, label: &str) {
     if path.exists() {
         print_status(Status::Exists, &format!("{label} already exists"));
     } else {
@@ -40,7 +41,7 @@ fn ensure_dir(path: &PathBuf, label: &str) {
     }
 }
 
-fn write_if_not_exists(path: &PathBuf, content: &str, label: &str) {
+fn write_if_not_exists(path: &Path, content: &str, label: &str) {
     if path.exists() {
         print_status(
             Status::Exists,
@@ -102,7 +103,7 @@ fn add_hook_entry(settings: &mut serde_json::Value, event: &str, command: &str) 
     event_arr.as_array_mut().unwrap().push(hook_entry);
 }
 
-fn merge_hooks(settings_path: &PathBuf) {
+fn merge_hooks(settings_path: &Path) {
     let mut settings: serde_json::Value = if settings_path.exists() {
         match fs::read_to_string(settings_path) {
             Ok(content) => match serde_json::from_str(&content) {
@@ -177,16 +178,16 @@ fn merge_hooks(settings_path: &PathBuf) {
     }
 }
 
-pub fn run(config: &PraxisConfig) -> Result<(), String> {
+pub fn run(config: &PraxisConfig) -> VpResult<()> {
     let claude = &config.claude_dir;
 
     // Pre-flight check
     if !claude.exists() {
-        return Err(
-            "Config directory not found. Ensure the entity root is properly configured.\n  \
+        return Err(VpError::Config(
+            "Config directory not found. Ensure the entity root is properly configured. \
              Check your entity configuration, then run this again."
                 .to_string(),
-        );
+        ));
     }
 
     println!("\n{BOLD}praxis-echo{RESET} — initializing pipeline enforcement\n");
@@ -212,8 +213,7 @@ pub fn run(config: &PraxisConfig) -> Result<(), String> {
         version: 1,
         ..Default::default()
     };
-    let initial_json = serde_json::to_string_pretty(&initial_state)
-        .map_err(|e| format!("Failed to serialize initial state: {e}"))?;
+    let initial_json = serde_json::to_string_pretty(&initial_state)?;
     write_if_not_exists(&state_path, &format!("{initial_json}\n"), "state.json");
 
     // Merge hooks into settings.json

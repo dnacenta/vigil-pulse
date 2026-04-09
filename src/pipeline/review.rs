@@ -1,9 +1,10 @@
 use super::parser;
 use super::state;
 use super::PraxisConfig;
+use crate::error::VpResult;
 
 /// Run review with explicit config (plugin context).
-pub fn run_with_config(config: &PraxisConfig) -> Result<(), String> {
+pub fn run_with_config(config: &PraxisConfig) -> VpResult<()> {
     let mut st = state::load(config)?;
     let scan = parser::scan_with_config(config);
 

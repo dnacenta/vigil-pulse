@@ -1,8 +1,9 @@
 use owo_colors::OwoColorize;
 
 use super::state::{self, AlertLevel, Trend};
+use crate::error::VpResult;
 
-pub fn run() -> Result<(), String> {
+pub fn run() -> VpResult<()> {
     // Cooldown check
     let config = state::load_config()?;
     let pulse_state = state::load_pulse_state()?;
@@ -82,12 +83,4 @@ pub fn run() -> Result<(), String> {
     Ok(())
 }
 
-fn friendly_name(name: &str) -> &str {
-    match name {
-        "vocabulary_diversity" => "vocabulary diversity",
-        "question_generation" => "question generation",
-        "thought_lifecycle" => "thought lifecycle",
-        "evidence_grounding" => "evidence grounding",
-        _ => name,
-    }
-}
+use crate::util::friendly_name;

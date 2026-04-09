@@ -2,6 +2,7 @@ use std::fs;
 
 use super::state;
 use super::PraxisConfig;
+use crate::error::{VpError, VpResult};
 
 const GREEN: &str = "\x1b[32m";
 const YELLOW: &str = "\x1b[33m";
@@ -9,18 +10,16 @@ const RESET: &str = "\x1b[0m";
 
 const MAX_PENDING: usize = 10;
 
-pub fn run(config: &PraxisConfig, topic: &str, when: &str, priority: &str) -> Result<(), String> {
+pub fn run(config: &PraxisConfig, topic: &str, when: &str, priority: &str) -> VpResult<()> {
     let queue_path = super::intent_queue_file(&config.docs_dir);
 
     // Load existing queue
     let mut queue: Vec<serde_json::Value> = if queue_path.exists() {
-        let content = fs::read_to_string(&queue_path)
-            .map_err(|e| format!("Failed to read intent queue: {e}"))?;
+        let content = fs::read_to_string(&queue_path)?;
         if content.trim().is_empty() {
             Vec::new()
         } else {
-            serde_json::from_str(&content)
-                .map_err(|e| format!("Failed to parse intent queue: {e}"))?
+            serde_json::from_str(&content)?
         }
     } else {
         Vec::new()
@@ -38,9 +37,9 @@ pub fn run(config: &PraxisConfig, topic: &str, when: &str, priority: &str) -> Re
         .count();
 
     if pending >= MAX_PENDING {
-        return Err(format!(
+        return Err(VpError::Pipeline(format!(
             "Intent queue is full ({pending} pending). Complete or remove some before adding more."
-        ));
+        )));
     }
 
     // Check for duplicates
@@ -85,10 +84,8 @@ pub fn run(config: &PraxisConfig, topic: &str, when: &str, priority: &str) -> Re
     queue.push(intent);
 
     // Write back
-    let json = serde_json::to_string_pretty(&queue)
-        .map_err(|e| format!("Failed to serialize intent queue: {e}"))?;
-    fs::write(&queue_path, format!("{json}\n"))
-        .map_err(|e| format!("Failed to write intent queue: {e}"))?;
+    let json = serde_json::to_string_pretty(&queue)?;
+    fs::write(&queue_path, format!("{json}\n"))?;
 
     println!("{GREEN}✓{RESET} Queued intent: \"{topic}\"");
     println!("  Priority:  {priority}");
@@ -100,7 +97,7 @@ pub fn run(config: &PraxisConfig, topic: &str, when: &str, priority: &str) -> Re
 
 /// Resolve relative time like "+2h", "+30m" to an ISO timestamp,
 /// or pass through an ISO 8601 string as-is.
-fn resolve_when(when: &str) -> Result<String, String> {
+fn resolve_when(when: &str) -> VpResult<String> {
     if let Some(rest) = when.strip_prefix('+') {
         let (num_str, unit) = if let Some(n) = rest.strip_suffix('h') {
             (n, 'h')
@@ -109,14 +106,14 @@ fn resolve_when(when: &str) -> Result<String, String> {
         } else if let Some(n) = rest.strip_suffix('d') {
             (n, 'd')
         } else {
-            return Err(format!(
+            return Err(VpError::Pipeline(format!(
                 "Invalid relative time: \"{when}\". Use +Nh, +Nm, or +Nd."
-            ));
+            )));
         };
 
         let num: u64 = num_str
             .parse()
-            .map_err(|_| format!("Invalid number in time: \"{when}\""))?;
+            .map_err(|_| VpError::Pipeline(format!("Invalid number in time: \"{when}\"")))?;
 
         let offset_secs = match unit {
             'h' => num * 3600,
@@ -131,23 +128,14 @@ fn resolve_when(when: &str) -> Result<String, String> {
             .as_secs();
         let target = now + offset_secs;
 
-        // Convert back to ISO — reuse the date algorithm from state.rs
+        // Convert back to ISO using shared date algorithm
         let days = target / 86400;
         let time_secs = target % 86400;
         let hours = time_secs / 3600;
         let minutes = (time_secs % 3600) / 60;
         let seconds = time_secs % 60;
 
-        let z = days + 719468;
-        let era = z / 146097;
-        let doe = z - era * 146097;
-        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-        let y = yoe + era * 400;
-        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-        let mp = (5 * doy + 2) / 153;
-        let d = doy - (153 * mp + 2) / 5 + 1;
-        let m = if mp < 10 { mp + 3 } else { mp - 9 };
-        let year = if m <= 2 { y + 1 } else { y };
+        let (year, m, d) = crate::util::days_to_date(days);
 
         Ok(format!(
             "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",

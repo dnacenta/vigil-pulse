@@ -1,6 +1,7 @@
 use super::parser;
 use super::state;
 use super::PraxisConfig;
+use crate::error::VpResult;
 
 const GREEN: &str = "\x1b[32m";
 const YELLOW: &str = "\x1b[33m";
@@ -33,32 +34,37 @@ fn bar(count: usize, soft: usize, hard: usize) -> String {
     )
 }
 
-pub fn run(config: &PraxisConfig) -> Result<(), String> {
+pub fn run(config: &PraxisConfig) -> VpResult<()> {
     let scan = parser::scan_with_config(config);
     let st = state::load(config)?;
 
     println!("\n{BOLD}praxis-echo{RESET} — Pipeline Health\n");
 
     // Document bars
+    let t = &config.thresholds;
     println!(
         "  {BOLD}LEARNING{RESET}     {}",
-        bar(scan.learning.active, 5, 8)
+        bar(scan.learning.active, t.learning_soft, t.learning_hard)
     );
     println!(
         "  {BOLD}THOUGHTS{RESET}     {}",
-        bar(scan.thoughts.active, 5, 10)
+        bar(scan.thoughts.active, t.thoughts_soft, t.thoughts_hard)
     );
     println!(
         "  {BOLD}CURIOSITY{RESET}    {}",
-        bar(scan.curiosity.active, 3, 7)
+        bar(scan.curiosity.active, t.curiosity_soft, t.curiosity_hard)
     );
     println!(
         "  {BOLD}REFLECTIONS{RESET}  {}",
-        bar(scan.reflections.total, 15, 20)
+        bar(
+            scan.reflections.total,
+            t.reflections_soft,
+            t.reflections_hard
+        )
     );
     println!(
         "  {BOLD}PRAXIS{RESET}       {}",
-        bar(scan.praxis.active, 5, 10)
+        bar(scan.praxis.active, t.praxis_soft, t.praxis_hard)
     );
 
     // Reflection log

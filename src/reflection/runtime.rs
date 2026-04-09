@@ -8,74 +8,13 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use pulse_system_types::monitoring::{
+    self as shared, CognitiveHealth, CognitiveStatus, SignalFrame, Trend,
+};
+
+use crate::error::VpResult;
 
 const SIGNALS_FILENAME: &str = "monitoring/signals.json";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/// A single frame of cognitive signals extracted from LLM output.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SignalFrame {
-    pub timestamp: String,
-    pub task_id: String,
-    pub vocabulary_diversity: f64,
-    pub question_count: usize,
-    pub evidence_references: usize,
-    pub thought_progress: bool,
-}
-
-/// Overall cognitive health status derived from signal trends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum CognitiveStatus {
-    Healthy,
-    Watch,
-    Concern,
-    Alert,
-}
-
-impl std::fmt::Display for CognitiveStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Healthy => write!(f, "HEALTHY"),
-            Self::Watch => write!(f, "WATCH"),
-            Self::Concern => write!(f, "CONCERN"),
-            Self::Alert => write!(f, "ALERT"),
-        }
-    }
-}
-
-/// Trend direction for a signal over a rolling window.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Trend {
-    Improving,
-    Stable,
-    Declining,
-}
-
-impl std::fmt::Display for Trend {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Improving => write!(f, "improving"),
-            Self::Stable => write!(f, "stable"),
-            Self::Declining => write!(f, "declining"),
-        }
-    }
-}
-
-/// Full cognitive health assessment.
-#[derive(Debug, Clone)]
-pub struct CognitiveHealth {
-    pub status: CognitiveStatus,
-    pub vocabulary_trend: Trend,
-    pub question_trend: Trend,
-    pub evidence_trend: Trend,
-    pub progress_trend: Trend,
-    pub suggestions: Vec<String>,
-    pub sufficient_data: bool,
-}
 
 // ---------------------------------------------------------------------------
 // Signal extraction from LLM output
@@ -84,7 +23,7 @@ pub struct CognitiveHealth {
 /// Extract cognitive signals from LLM output text.
 pub fn extract(content: &str, task_id: &str) -> SignalFrame {
     SignalFrame {
-        timestamp: super::state::now_iso(),
+        timestamp: crate::util::now_iso(),
         task_id: task_id.to_string(),
         vocabulary_diversity: calc_vocabulary_diversity(content),
         question_count: count_questions(content),
@@ -200,11 +139,7 @@ pub fn load_signals(root_dir: &Path) -> Vec<SignalFrame> {
 }
 
 /// Save signals to disk, trimming to window size.
-pub fn save_signals(
-    root_dir: &Path,
-    signals: &[SignalFrame],
-    window_size: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn save_signals(root_dir: &Path, signals: &[SignalFrame], window_size: usize) -> VpResult<()> {
     let path = root_dir.join(SIGNALS_FILENAME);
 
     let trimmed: Vec<&SignalFrame> = if signals.len() > window_size {
@@ -223,11 +158,7 @@ pub fn save_signals(
 }
 
 /// Append a new signal frame and save.
-pub fn record(
-    root_dir: &Path,
-    frame: SignalFrame,
-    window_size: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn record(root_dir: &Path, frame: SignalFrame, window_size: usize) -> VpResult<()> {
     let mut signals = load_signals(root_dir);
     signals.push(frame);
     save_signals(root_dir, &signals, window_size)
@@ -407,8 +338,6 @@ where
 // Trait implementation: CognitiveMonitor
 // ---------------------------------------------------------------------------
 
-use pulse_system_types::monitoring as shared;
-
 /// Concrete implementation of the CognitiveMonitor trait.
 ///
 /// pulse-null core creates this and stores it as `Arc<dyn CognitiveMonitor>`.
@@ -427,121 +356,26 @@ impl Default for VigilMonitor {
     }
 }
 
-// --- Internal <-> Shared type conversions ---
-
-fn shared_status(s: &CognitiveStatus) -> shared::CognitiveStatus {
-    match s {
-        CognitiveStatus::Healthy => shared::CognitiveStatus::Healthy,
-        CognitiveStatus::Watch => shared::CognitiveStatus::Watch,
-        CognitiveStatus::Concern => shared::CognitiveStatus::Concern,
-        CognitiveStatus::Alert => shared::CognitiveStatus::Alert,
-    }
-}
-
-fn shared_trend(t: &Trend) -> shared::Trend {
-    match t {
-        Trend::Improving => shared::Trend::Improving,
-        Trend::Stable => shared::Trend::Stable,
-        Trend::Declining => shared::Trend::Declining,
-    }
-}
-
-fn shared_cognitive_health(h: &CognitiveHealth) -> shared::CognitiveHealth {
-    shared::CognitiveHealth {
-        status: shared_status(&h.status),
-        vocabulary_trend: shared_trend(&h.vocabulary_trend),
-        question_trend: shared_trend(&h.question_trend),
-        evidence_trend: shared_trend(&h.evidence_trend),
-        progress_trend: shared_trend(&h.progress_trend),
-        suggestions: h.suggestions.clone(),
-        sufficient_data: h.sufficient_data,
-    }
-}
-
-fn internal_cognitive_health(h: &shared::CognitiveHealth) -> CognitiveHealth {
-    CognitiveHealth {
-        status: match h.status {
-            shared::CognitiveStatus::Healthy => CognitiveStatus::Healthy,
-            shared::CognitiveStatus::Watch => CognitiveStatus::Watch,
-            shared::CognitiveStatus::Concern => CognitiveStatus::Concern,
-            shared::CognitiveStatus::Alert => CognitiveStatus::Alert,
-        },
-        vocabulary_trend: match h.vocabulary_trend {
-            shared::Trend::Improving => Trend::Improving,
-            shared::Trend::Stable => Trend::Stable,
-            shared::Trend::Declining => Trend::Declining,
-        },
-        question_trend: match h.question_trend {
-            shared::Trend::Improving => Trend::Improving,
-            shared::Trend::Stable => Trend::Stable,
-            shared::Trend::Declining => Trend::Declining,
-        },
-        evidence_trend: match h.evidence_trend {
-            shared::Trend::Improving => Trend::Improving,
-            shared::Trend::Stable => Trend::Stable,
-            shared::Trend::Declining => Trend::Declining,
-        },
-        progress_trend: match h.progress_trend {
-            shared::Trend::Improving => Trend::Improving,
-            shared::Trend::Stable => Trend::Stable,
-            shared::Trend::Declining => Trend::Declining,
-        },
-        suggestions: h.suggestions.clone(),
-        sufficient_data: h.sufficient_data,
-    }
-}
-
-fn shared_signal_frame(f: &SignalFrame) -> shared::SignalFrame {
-    shared::SignalFrame {
-        timestamp: f.timestamp.clone(),
-        task_id: f.task_id.clone(),
-        vocabulary_diversity: f.vocabulary_diversity,
-        question_count: f.question_count,
-        evidence_references: f.evidence_references,
-        thought_progress: f.thought_progress,
-    }
-}
-
-fn internal_signal_frame(f: &shared::SignalFrame) -> SignalFrame {
-    SignalFrame {
-        timestamp: f.timestamp.clone(),
-        task_id: f.task_id.clone(),
-        vocabulary_diversity: f.vocabulary_diversity,
-        question_count: f.question_count,
-        evidence_references: f.evidence_references,
-        thought_progress: f.thought_progress,
-    }
-}
-
 impl shared::CognitiveMonitor for VigilMonitor {
-    fn assess(
-        &self,
-        root_dir: &Path,
-        window_size: usize,
-        min_samples: usize,
-    ) -> shared::CognitiveHealth {
-        let health = assess(root_dir, window_size, min_samples);
-        shared_cognitive_health(&health)
+    fn assess(&self, root_dir: &Path, window_size: usize, min_samples: usize) -> CognitiveHealth {
+        assess(root_dir, window_size, min_samples)
     }
 
-    fn render_for_prompt(&self, health: &shared::CognitiveHealth) -> String {
-        let internal = internal_cognitive_health(health);
-        render(&internal)
+    fn render_for_prompt(&self, health: &CognitiveHealth) -> String {
+        render(health)
     }
 
-    fn extract(&self, content: &str, task_id: &str) -> shared::SignalFrame {
-        let frame = extract(content, task_id);
-        shared_signal_frame(&frame)
+    fn extract(&self, content: &str, task_id: &str) -> SignalFrame {
+        extract(content, task_id)
     }
 
     fn record(
         &self,
         root_dir: &Path,
-        frame: shared::SignalFrame,
+        frame: SignalFrame,
         window_size: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let internal = internal_signal_frame(&frame);
-        record(root_dir, internal, window_size)
+        record(root_dir, frame, window_size).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
     }
 }
 
@@ -555,7 +389,7 @@ mod tests {
 
     fn make_frame(vocab: f64, questions: usize, evidence: usize, progress: bool) -> SignalFrame {
         SignalFrame {
-            timestamp: super::super::state::now_iso(),
+            timestamp: crate::util::now_iso(),
             task_id: "test".to_string(),
             vocabulary_diversity: vocab,
             question_count: questions,

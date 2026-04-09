@@ -9,6 +9,7 @@ use chrono::Utc;
 
 use super::outcome::{infer_domain, infer_outcome, infer_task_type, Outcome, OutcomeRecord};
 use super::state::CaliberState;
+use crate::error::VpResult;
 
 /// Build an outcome record from task execution results.
 pub fn build_outcome(
@@ -40,7 +41,7 @@ pub fn record_outcome(
     docs_dir: &Path,
     outcome: OutcomeRecord,
     max_outcomes: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> VpResult<()> {
     let mut state = CaliberState::load(docs_dir);
     state.record(outcome, max_outcomes);
     state.save(docs_dir)
@@ -238,6 +239,7 @@ impl shared::OutcomeTracker for CaliberTracker {
         outcome: shared::OutcomeRecord,
         max_outcomes: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // Internal functions use VpResult; convert for the trait boundary
         let task_type = super::outcome::infer_task_type(&outcome.task_id);
         let internal_outcome = match outcome.outcome.as_str() {
             "success" => Outcome::Success,
@@ -263,6 +265,7 @@ impl shared::OutcomeTracker for CaliberTracker {
         };
 
         record_outcome(docs_dir, internal, max_outcomes)
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
     }
 }
 

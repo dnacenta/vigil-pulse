@@ -246,7 +246,7 @@ mod tests {
         let vals = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         let amp = rolling_amplitude(&vals, 3);
         assert_eq!(amp.len(), 3); // 5 - 3 + 1
-        // Each window [1,2,3], [2,3,4], [3,4,5] has the same std dev
+                                  // Each window [1,2,3], [2,3,4], [3,4,5] has the same std dev
         for v in &amp {
             assert!((v - 0.8165).abs() < 0.01);
         }

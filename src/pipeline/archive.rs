@@ -3,6 +3,7 @@ use std::fs;
 use super::parser;
 use super::state;
 use super::PraxisConfig;
+use crate::error::VpResult;
 
 const BOLD: &str = "\x1b[1m";
 const YELLOW: &str = "\x1b[33m";
@@ -16,51 +17,30 @@ struct ArchiveCandidate {
     overflow: usize,
 }
 
-pub fn run(config: &PraxisConfig, dry_run: bool) -> Result<(), String> {
+pub fn run(config: &PraxisConfig, dry_run: bool) -> VpResult<()> {
     let scan = parser::scan_with_config(config);
 
     let mut candidates: Vec<ArchiveCandidate> = Vec::new();
+    let t = &config.thresholds;
 
     // Check each document against hard limits
-    if scan.learning.active > 8 {
-        candidates.push(ArchiveCandidate {
-            document: "LEARNING.md".to_string(),
-            current: scan.learning.active,
-            hard_limit: 8,
-            overflow: scan.learning.active - 8,
-        });
-    }
-    if scan.thoughts.active > 10 {
-        candidates.push(ArchiveCandidate {
-            document: "THOUGHTS.md".to_string(),
-            current: scan.thoughts.active,
-            hard_limit: 10,
-            overflow: scan.thoughts.active - 10,
-        });
-    }
-    if scan.curiosity.active > 7 {
-        candidates.push(ArchiveCandidate {
-            document: "CURIOSITY.md".to_string(),
-            current: scan.curiosity.active,
-            hard_limit: 7,
-            overflow: scan.curiosity.active - 7,
-        });
-    }
-    if scan.reflections.total > 20 {
-        candidates.push(ArchiveCandidate {
-            document: "REFLECTIONS.md".to_string(),
-            current: scan.reflections.total,
-            hard_limit: 20,
-            overflow: scan.reflections.total - 20,
-        });
-    }
-    if scan.praxis.active > 10 {
-        candidates.push(ArchiveCandidate {
-            document: "PRAXIS.md".to_string(),
-            current: scan.praxis.active,
-            hard_limit: 10,
-            overflow: scan.praxis.active - 10,
-        });
+    let checks: &[(&str, usize, usize)] = &[
+        ("LEARNING.md", scan.learning.active, t.learning_hard),
+        ("THOUGHTS.md", scan.thoughts.active, t.thoughts_hard),
+        ("CURIOSITY.md", scan.curiosity.active, t.curiosity_hard),
+        ("REFLECTIONS.md", scan.reflections.total, t.reflections_hard),
+        ("PRAXIS.md", scan.praxis.active, t.praxis_hard),
+    ];
+
+    for &(document, current, hard_limit) in checks {
+        if current >= hard_limit {
+            candidates.push(ArchiveCandidate {
+                document: document.to_string(),
+                current,
+                hard_limit,
+                overflow: current - hard_limit,
+            });
+        }
     }
 
     if candidates.is_empty() {
@@ -100,8 +80,7 @@ pub fn run(config: &PraxisConfig, dry_run: bool) -> Result<(), String> {
         };
         let archive_dir = archives.join(sub);
         if !archive_dir.exists() {
-            fs::create_dir_all(&archive_dir)
-                .map_err(|e| format!("Failed to create archive dir: {e}"))?;
+            fs::create_dir_all(&archive_dir)?;
         }
 
         // Create an archive marker file — actual content migration is manual
@@ -116,7 +95,7 @@ pub fn run(config: &PraxisConfig, dry_run: bool) -> Result<(), String> {
              Review the document and move the oldest/most integrated items here.\n",
             c.document, c.current, c.hard_limit, c.overflow
         );
-        fs::write(&marker, content).map_err(|e| format!("Failed to write archive marker: {e}"))?;
+        fs::write(&marker, content)?;
         println!(
             "  {GREEN}✓{RESET} Created archive marker: {}",
             marker.display()

@@ -1,13 +1,7 @@
 use std::collections::HashMap;
 
 use super::state::{AlertLevel, Analysis, Config, SignalTrend, SignalVector, Trend};
-
-const SIGNAL_NAMES: &[&str] = &[
-    "vocabulary_diversity",
-    "question_generation",
-    "thought_lifecycle",
-    "evidence_grounding",
-];
+use crate::util::SIGNAL_NAMES;
 
 /// Extract a signal value by name from a SignalVector.
 fn get_signal(sv: &SignalVector, name: &str) -> Option<f64> {
@@ -30,97 +24,75 @@ fn mean(values: &[Option<f64>]) -> Option<f64> {
 }
 
 /// Run trend analysis on signal history.
-pub fn run(history: &[SignalVector], config: &Config) -> Analysis {
-    let window = config.window_size.min(history.len());
-    let data = &history[history.len().saturating_sub(window)..];
+/// Analyze a single signal's trend, returning its trend info plus the trend direction.
+fn analyze_signal(name: &str, data: &[SignalVector], config: &Config) -> (SignalTrend, Trend) {
+    let values: Vec<Option<f64>> = data.iter().map(|sv| get_signal(sv, name)).collect();
 
-    let mut signal_trends: HashMap<String, SignalTrend> = HashMap::new();
-    let mut improving = 0;
-    let mut stable = 0;
-    let mut declining = 0;
-    let mut watch_messages: Vec<String> = Vec::new();
-    let mut best_delta: Option<(String, f64)> = None;
-
-    for &name in SIGNAL_NAMES {
-        let values: Vec<Option<f64>> = data.iter().map(|sv| get_signal(sv, name)).collect();
-
-        // Need at least 3 data points for trend detection
-        if values.len() < 3 {
-            if let Some(current) = values.last().and_then(|v| *v) {
-                signal_trends.insert(
-                    name.to_string(),
-                    SignalTrend {
-                        current: Some(current),
-                        trend: Trend::Stable,
-                        delta: 0.0,
-                    },
-                );
-                stable += 1;
-            }
-            continue;
-        }
-
-        let recent_start = values.len().saturating_sub(3);
-        let recent = &values[recent_start..];
-        let baseline = &values[..recent_start];
-
-        let recent_mean = mean(recent);
-        let baseline_mean = if baseline.is_empty() {
-            recent_mean
-        } else {
-            mean(baseline)
-        };
-
+    if values.len() < 3 {
         let current = values.last().and_then(|v| *v);
-
-        let (trend, delta) =
-            match (recent_mean, baseline_mean) {
-                (Some(r), Some(b)) => {
-                    let d = r - b;
-                    let threshold = config.thresholds.get(name).cloned().unwrap_or(
-                        super::state::ThresholdPair {
-                            decline: -0.05,
-                            improve: 0.05,
-                        },
-                    );
-                    if d < threshold.decline {
-                        (Trend::Declining, d)
-                    } else if d > threshold.improve {
-                        (Trend::Improving, d)
-                    } else {
-                        (Trend::Stable, d)
-                    }
-                }
-                _ => (Trend::Stable, 0.0),
-            };
-
-        match trend {
-            Trend::Improving => {
-                improving += 1;
-                if best_delta.as_ref().is_none_or(|(_, bd)| delta > *bd) {
-                    best_delta = Some((name.to_string(), delta));
-                }
-            }
-            Trend::Declining => {
-                declining += 1;
-                let msg = decline_message(name, current, delta);
-                watch_messages.push(msg);
-            }
-            Trend::Stable => stable += 1,
-        }
-
-        signal_trends.insert(
-            name.to_string(),
+        return (
             SignalTrend {
                 current,
-                trend,
-                delta,
+                trend: Trend::Stable,
+                delta: 0.0,
             },
+            Trend::Stable,
         );
     }
 
-    // Determine alert level
-    let alert_level = if declining >= 3 {
+    let recent_start = values.len().saturating_sub(3);
+    let recent = &values[recent_start..];
+    let baseline = &values[..recent_start];
+
+    let recent_mean = mean(recent);
+    let baseline_mean = if baseline.is_empty() {
+        recent_mean
+    } else {
+        mean(baseline)
+    };
+
+    let current = values.last().and_then(|v| *v);
+
+    let (trend, delta) = match (recent_mean, baseline_mean) {
+        (Some(r), Some(b)) => {
+            let d = r - b;
+            let threshold =
+                config
+                    .thresholds
+                    .get(name)
+                    .cloned()
+                    .unwrap_or(super::state::ThresholdPair {
+                        decline: -0.05,
+                        improve: 0.05,
+                    });
+            if d < threshold.decline {
+                (Trend::Declining, d)
+            } else if d > threshold.improve {
+                (Trend::Improving, d)
+            } else {
+                (Trend::Stable, d)
+            }
+        }
+        _ => (Trend::Stable, 0.0),
+    };
+
+    (
+        SignalTrend {
+            current,
+            trend: trend.clone(),
+            delta,
+        },
+        trend,
+    )
+}
+
+/// Determine alert level, upgrading to Alert if decline is sustained.
+fn determine_alert_level(
+    declining: usize,
+    history: &[SignalVector],
+    config: &Config,
+) -> AlertLevel {
+    let base_level = if declining >= 3 {
         AlertLevel::Concern
     } else if declining >= 1 {
         AlertLevel::Watch
@@ -128,11 +100,7 @@ pub fn run(history: &[SignalVector], config: &Config) -> Analysis {
         AlertLevel::Healthy
     };
 
-    // Check for sustained decline (ALERT level)
-    let alert_level = if alert_level == AlertLevel::Concern
-        && history.len() >= config.alert_after_sessions
-    {
-        // Check if decline has persisted across many sessions
+    if base_level == AlertLevel::Concern && history.len() >= config.alert_after_sessions {
         let lookback = config.alert_after_sessions.min(history.len());
         let old_data = &history[history.len() - lookback..];
         let sustained = SIGNAL_NAMES.iter().any(|name| {
@@ -150,8 +118,50 @@ pub fn run(history: &[SignalVector], config: &Config) -> Analysis {
             AlertLevel::Concern
         }
     } else {
-        alert_level
-    };
+        base_level
+    }
+}
+
+/// Run trend analysis on signal history.
+pub fn run(history: &[SignalVector], config: &Config) -> Analysis {
+    let window = config.window_size.min(history.len());
+    let data = &history[history.len().saturating_sub(window)..];
+
+    let mut signal_trends: HashMap<String, SignalTrend> = HashMap::new();
+    let mut improving = 0;
+    let mut stable = 0;
+    let mut declining = 0;
+    let mut watch_messages: Vec<String> = Vec::new();
+    let mut best_delta: Option<(String, f64)> = None;
+
+    for &name in &SIGNAL_NAMES {
+        let (signal_trend, trend) = analyze_signal(name, data, config);
+
+        match trend {
+            Trend::Improving => {
+                improving += 1;
+                if best_delta
+                    .as_ref()
+                    .is_none_or(|(_, bd)| signal_trend.delta > *bd)
+                {
+                    best_delta = Some((name.to_string(), signal_trend.delta));
+                }
+            }
+            Trend::Declining => {
+                declining += 1;
+                watch_messages.push(decline_message(
+                    name,
+                    signal_trend.current,
+                    signal_trend.delta,
+                ));
+            }
+            Trend::Stable => stable += 1,
+        }
+
+        signal_trends.insert(name.to_string(), signal_trend);
+    }
+
+    let alert_level = determine_alert_level(declining, history, config);
 
     let highlight = best_delta.map(|(name, delta)| {
         let friendly = friendly_name(&name);
@@ -196,15 +206,7 @@ fn decline_message(name: &str, current: Option<f64>, delta: f64) -> String {
     }
 }
 
-fn friendly_name(name: &str) -> &str {
-    match name {
-        "vocabulary_diversity" => "vocabulary diversity",
-        "question_generation" => "question generation",
-        "thought_lifecycle" => "thought lifecycle",
-        "evidence_grounding" => "evidence grounding",
-        _ => name,
-    }
-}
+use crate::util::friendly_name;
 
 #[cfg(test)]
 mod tests {

@@ -1,38 +1,7 @@
 use std::collections::HashSet;
-use std::fs;
-use std::path::Path;
 
-/// Read file content or return empty string if missing.
-pub fn read_or_empty(path: &Path) -> String {
-    fs::read_to_string(path).unwrap_or_default()
-}
-
-/// Simple djb2 hash for change detection.
-pub fn hash_content(content: &str) -> String {
-    let mut hash: u64 = 5381;
-    for byte in content.bytes() {
-        hash = hash.wrapping_mul(33).wrapping_add(byte as u64);
-    }
-    format!("{:016x}", hash)
-}
-
-/// Count ### headings under a specific ## section.
-pub fn count_h3_under_section(content: &str, section_name: &str) -> usize {
-    let mut in_section = false;
-    let mut count = 0;
-    for line in content.lines() {
-        if line.starts_with("## ") {
-            let heading = line.trim_start_matches("## ").trim();
-            in_section = heading.eq_ignore_ascii_case(section_name)
-                || heading
-                    .to_lowercase()
-                    .contains(&section_name.to_lowercase());
-        } else if in_section && line.starts_with("### ") {
-            count += 1;
-        }
-    }
-    count
-}
+// Re-export shared helpers so existing callers like `parser::read_or_empty()` keep working.
+pub use crate::util::{count_h3_under_section, hash_content, read_or_empty};
 
 /// Tokenize text into lowercase words (split on whitespace + punctuation).
 pub fn tokenize(text: &str) -> Vec<String> {

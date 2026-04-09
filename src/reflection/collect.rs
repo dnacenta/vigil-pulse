@@ -3,11 +3,16 @@ use std::collections::HashMap;
 use owo_colors::OwoColorize;
 
 use super::{analyze, parser, signals, state};
+use crate::error::VpResult;
 
-pub fn run(trigger: &str) -> Result<(), String> {
-    let reflections_content = parser::read_or_empty(&super::reflections_file()?);
-    let thoughts_content = parser::read_or_empty(&super::thoughts_file()?);
-    let curiosity_content = parser::read_or_empty(&super::curiosity_file()?);
+pub fn run(trigger: &str) -> VpResult<()> {
+    let reflections_content = parser::read_or_empty(
+        &super::reflections_file().map_err(crate::error::VpError::Reflection)?,
+    );
+    let thoughts_content =
+        parser::read_or_empty(&super::thoughts_file().map_err(crate::error::VpError::Reflection)?);
+    let curiosity_content =
+        parser::read_or_empty(&super::curiosity_file().map_err(crate::error::VpError::Reflection)?);
 
     // Extract signals
     let sigs = state::Signals {

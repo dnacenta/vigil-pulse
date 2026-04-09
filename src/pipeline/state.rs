@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use crate::error::VpResult;
+
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct State {
     pub version: u32,
@@ -59,70 +61,32 @@ pub struct SessionRecord {
     pub pipeline_active: bool,
 }
 
-pub fn load(config: &super::PraxisConfig) -> Result<State, String> {
+pub fn load(config: &super::PraxisConfig) -> VpResult<State> {
     let path = super::state_file(&config.claude_dir);
     load_from(&path)
 }
 
-pub fn load_from(path: &Path) -> Result<State, String> {
+pub fn load_from(path: &Path) -> VpResult<State> {
     if !path.exists() {
         return Ok(State {
             version: 1,
             ..Default::default()
         });
     }
-    let content = fs::read_to_string(path).map_err(|e| format!("Failed to read state: {e}"))?;
-    serde_json::from_str(&content).map_err(|e| format!("Failed to parse state: {e}"))
+    let content = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&content)?)
 }
 
-pub fn save(state: &State, config: &super::PraxisConfig) -> Result<(), String> {
+pub fn save(state: &State, config: &super::PraxisConfig) -> VpResult<()> {
     let path = super::state_file(&config.claude_dir);
     save_to(state, &path)
 }
 
-pub fn save_to(state: &State, path: &Path) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(state)
-        .map_err(|e| format!("Failed to serialize state: {e}"))?;
-    fs::write(path, format!("{json}\n")).map_err(|e| format!("Failed to write state: {e}"))
+pub fn save_to(state: &State, path: &Path) -> VpResult<()> {
+    let json = serde_json::to_string_pretty(state)?;
+    fs::write(path, format!("{json}\n"))?;
+    Ok(())
 }
 
-pub fn now_iso() -> String {
-    // Simple UTC timestamp without chrono dependency
-    let duration = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = duration.as_secs();
-    // Convert to rough ISO format
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let minutes = (time_secs % 3600) / 60;
-    let seconds = time_secs % 60;
-
-    // Calculate year/month/day from days since epoch
-    let (year, month, day) = days_to_date(days);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        year, month, day, hours, minutes, seconds
-    )
-}
-
-pub fn today_iso() -> String {
-    let ts = now_iso();
-    ts[..10].to_string()
-}
-
-fn days_to_date(days_since_epoch: u64) -> (u64, u64, u64) {
-    // Algorithm from http://howardhinnant.github.io/date_algorithms.html
-    let z = days_since_epoch + 719468;
-    let era = z / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = if m <= 2 { y + 1 } else { y };
-    (year, m, d)
-}
+// Re-export shared timestamp helpers so existing callers like `state::now_iso()` keep working.
+pub use crate::util::{now_iso, today_iso};

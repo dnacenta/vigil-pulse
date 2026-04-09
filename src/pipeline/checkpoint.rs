@@ -3,8 +3,9 @@ use std::fs;
 use super::parser;
 use super::state;
 use super::PraxisConfig;
+use crate::error::VpResult;
 
-pub fn run(config: &PraxisConfig) -> Result<(), String> {
+pub fn run(config: &PraxisConfig) -> VpResult<()> {
     let scan = parser::scan_with_config(config);
 
     // Build checkpoint data
@@ -26,8 +27,7 @@ pub fn run(config: &PraxisConfig) -> Result<(), String> {
     // Find next checkpoint number
     let cp_dir = super::checkpoints_dir(&config.claude_dir);
     if !cp_dir.exists() {
-        fs::create_dir_all(&cp_dir)
-            .map_err(|e| format!("Failed to create checkpoints dir: {e}"))?;
+        fs::create_dir_all(&cp_dir)?;
     }
 
     let mut max_num = 0u32;
@@ -49,10 +49,8 @@ pub fn run(config: &PraxisConfig) -> Result<(), String> {
     let filename = format!("checkpoint-{:03}.json", next);
     let filepath = cp_dir.join(&filename);
 
-    let json = serde_json::to_string_pretty(&checkpoint)
-        .map_err(|e| format!("Failed to serialize checkpoint: {e}"))?;
-    fs::write(&filepath, format!("{json}\n"))
-        .map_err(|e| format!("Failed to write checkpoint: {e}"))?;
+    let json = serde_json::to_string_pretty(&checkpoint)?;
+    fs::write(&filepath, format!("{json}\n"))?;
 
     println!(
         "[PRAXIS — Checkpoint #{:03} saved to {}]",

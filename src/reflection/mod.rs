@@ -15,7 +15,9 @@ pub mod state;
 pub mod stats;
 pub mod status;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use crate::error::{VpError, VpResult};
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -79,11 +81,6 @@ pub fn curiosity_file() -> Result<PathBuf, String> {
     Ok(docs_dir()?.join("CURIOSITY.md"))
 }
 
-#[allow(dead_code)] // Phase 2: position_delta signal
-pub fn self_file() -> Result<PathBuf, String> {
-    Ok(docs_dir()?.join("SELF.md"))
-}
-
 // ---------------------------------------------------------------------------
 // VigilEcho — core struct
 // ---------------------------------------------------------------------------
@@ -102,15 +99,18 @@ impl VigilEcho {
         }
     }
 
-    pub fn from_default() -> Result<Self, String> {
-        Ok(Self::new(self::claude_dir()?, self::docs_dir()?))
+    pub fn from_default() -> VpResult<Self> {
+        Ok(Self::new(
+            self::claude_dir().map_err(VpError::Config)?,
+            self::docs_dir().map_err(VpError::Config)?,
+        ))
     }
 
-    pub fn claude_dir(&self) -> &PathBuf {
+    pub fn claude_dir(&self) -> &Path {
         &self.claude_dir
     }
 
-    pub fn docs_dir(&self) -> &PathBuf {
+    pub fn docs_dir(&self) -> &Path {
         &self.docs_dir
     }
 }

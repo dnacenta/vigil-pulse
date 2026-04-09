@@ -4,13 +4,7 @@ use std::io::{BufRead, BufReader, Write};
 use super::parser;
 use super::state;
 use super::PraxisConfig;
-
-/// Default soft and hard thresholds for standalone CLI: (soft, hard)
-const LEARNING_THRESHOLD: (usize, usize) = (5, 8);
-const THOUGHTS_THRESHOLD: (usize, usize) = (5, 10);
-const CURIOSITY_THRESHOLD: (usize, usize) = (3, 7);
-const REFLECTIONS_THRESHOLD: (usize, usize) = (15, 20);
-const PRAXIS_THRESHOLD: (usize, usize) = (5, 10);
+use crate::error::VpResult;
 
 fn seconds_since_epoch() -> u64 {
     std::time::SystemTime::now()
@@ -21,26 +15,11 @@ fn seconds_since_epoch() -> u64 {
 
 fn should_skip(last_pulse: &Option<String>, cooldown_secs: u64) -> bool {
     if let Some(ts) = last_pulse {
-        if let Ok(last) = parse_iso_to_epoch(ts) {
+        if let Some(last) = crate::util::parse_iso_epoch(ts) {
             return seconds_since_epoch() - last < cooldown_secs;
         }
     }
     false
-}
-
-fn parse_iso_to_epoch(ts: &str) -> Result<u64, ()> {
-    // Parse "YYYY-MM-DDThh:mm:ssZ" to rough epoch seconds
-    if ts.len() < 19 {
-        return Err(());
-    }
-    let year: u64 = ts[..4].parse().map_err(|_| ())?;
-    let month: u64 = ts[5..7].parse().map_err(|_| ())?;
-    let day: u64 = ts[8..10].parse().map_err(|_| ())?;
-    let hour: u64 = ts[11..13].parse().map_err(|_| ())?;
-    let min: u64 = ts[14..16].parse().map_err(|_| ())?;
-    let sec: u64 = ts[17..19].parse().map_err(|_| ())?;
-    // Rough approximation (good enough for cooldown checks)
-    Ok(((year * 365 + month * 30 + day) * 86400) + hour * 3600 + min * 60 + sec)
 }
 
 fn threshold_label(count: usize, soft: usize, hard: usize) -> &'static str {
@@ -54,7 +33,7 @@ fn threshold_label(count: usize, soft: usize, hard: usize) -> &'static str {
 }
 
 /// Run pulse with explicit config (plugin context).
-pub fn run_with_config(config: &PraxisConfig) -> Result<(), String> {
+pub fn run_with_config(config: &PraxisConfig) -> VpResult<()> {
     let mut st = state::load(config)?;
 
     // Idempotency: skip if pulsed within cooldown window
@@ -86,38 +65,27 @@ pub fn run_with_config(config: &PraxisConfig) -> Result<(), String> {
     );
 
     // Output pipeline state for agent context
+    let t = &config.thresholds;
     println!("[PRAXIS — Pipeline State]");
 
     // Document counts
     println!(
         "  LEARNING:    {} active threads{}",
         scan.learning.active,
-        threshold_label(
-            scan.learning.active,
-            LEARNING_THRESHOLD.0,
-            LEARNING_THRESHOLD.1
-        )
+        threshold_label(scan.learning.active, t.learning_soft, t.learning_hard)
     );
     println!(
         "  THOUGHTS:    {} active, {} graduated, {} dissolved{}",
         scan.thoughts.active,
         scan.thoughts.graduated,
         scan.thoughts.dissolved,
-        threshold_label(
-            scan.thoughts.active,
-            THOUGHTS_THRESHOLD.0,
-            THOUGHTS_THRESHOLD.1
-        )
+        threshold_label(scan.thoughts.active, t.thoughts_soft, t.thoughts_hard)
     );
     println!(
         "  CURIOSITY:   {} open, {} explored{}",
         scan.curiosity.active,
         scan.curiosity.explored,
-        threshold_label(
-            scan.curiosity.active,
-            CURIOSITY_THRESHOLD.0,
-            CURIOSITY_THRESHOLD.1
-        )
+        threshold_label(scan.curiosity.active, t.curiosity_soft, t.curiosity_hard)
     );
     println!(
         "  REFLECTIONS: {} total (observations: {}){}",
@@ -125,15 +93,15 @@ pub fn run_with_config(config: &PraxisConfig) -> Result<(), String> {
         scan.reflections.active,
         threshold_label(
             scan.reflections.total,
-            REFLECTIONS_THRESHOLD.0,
-            REFLECTIONS_THRESHOLD.1
+            t.reflections_soft,
+            t.reflections_hard
         )
     );
     println!(
         "  PRAXIS:      {} active, {} retired{}",
         scan.praxis.active,
         scan.praxis.graduated,
-        threshold_label(scan.praxis.active, PRAXIS_THRESHOLD.0, PRAXIS_THRESHOLD.1)
+        threshold_label(scan.praxis.active, t.praxis_soft, t.praxis_hard)
     );
 
     // Reflection log

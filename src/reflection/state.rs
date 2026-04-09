@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use crate::error::{VpError, VpResult};
+
 /// A single signal vector collected at a point in time.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SignalVector {
@@ -126,136 +128,75 @@ pub struct PulseState {
 
 // --- Load/save helpers ---
 
-pub fn load_signals() -> Result<Vec<SignalVector>, String> {
-    let path = super::signals_file()?;
+pub fn load_signals() -> VpResult<Vec<SignalVector>> {
+    let path = super::signals_file().map_err(VpError::Reflection)?;
     load_signals_from(&path)
 }
 
-pub fn load_signals_from(path: &Path) -> Result<Vec<SignalVector>, String> {
+pub fn load_signals_from(path: &Path) -> VpResult<Vec<SignalVector>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let content = fs::read_to_string(path).map_err(|e| format!("Failed to read signals: {e}"))?;
-    serde_json::from_str(&content).map_err(|e| format!("Failed to parse signals: {e}"))
+    let content = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&content)?)
 }
 
-pub fn save_signals(signals: &[SignalVector]) -> Result<(), String> {
-    let path = super::signals_file()?;
+pub fn save_signals(signals: &[SignalVector]) -> VpResult<()> {
+    let path = super::signals_file().map_err(VpError::Reflection)?;
     save_signals_to(signals, &path)
 }
 
-pub fn save_signals_to(signals: &[SignalVector], path: &Path) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(signals)
-        .map_err(|e| format!("Failed to serialize signals: {e}"))?;
-    fs::write(path, format!("{json}\n")).map_err(|e| format!("Failed to write signals: {e}"))
+pub fn save_signals_to(signals: &[SignalVector], path: &Path) -> VpResult<()> {
+    let json = serde_json::to_string_pretty(signals)?;
+    fs::write(path, format!("{json}\n"))?;
+    Ok(())
 }
 
-pub fn load_analysis() -> Result<Option<Analysis>, String> {
-    let path = super::analysis_file()?;
+pub fn load_analysis() -> VpResult<Option<Analysis>> {
+    let path = super::analysis_file().map_err(VpError::Reflection)?;
     if !path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(&path).map_err(|e| format!("Failed to read analysis: {e}"))?;
-    let analysis =
-        serde_json::from_str(&content).map_err(|e| format!("Failed to parse analysis: {e}"))?;
+    let content = fs::read_to_string(&path)?;
+    let analysis = serde_json::from_str(&content)?;
     Ok(Some(analysis))
 }
 
-pub fn save_analysis(analysis: &Analysis) -> Result<(), String> {
-    let path = super::analysis_file()?;
-    let json = serde_json::to_string_pretty(analysis)
-        .map_err(|e| format!("Failed to serialize analysis: {e}"))?;
-    fs::write(path, format!("{json}\n")).map_err(|e| format!("Failed to write analysis: {e}"))
+pub fn save_analysis(analysis: &Analysis) -> VpResult<()> {
+    let path = super::analysis_file().map_err(VpError::Reflection)?;
+    let json = serde_json::to_string_pretty(analysis)?;
+    fs::write(path, format!("{json}\n"))?;
+    Ok(())
 }
 
-pub fn load_config() -> Result<Config, String> {
-    let path = super::config_file()?;
+pub fn load_config() -> VpResult<Config> {
+    let path = super::config_file().map_err(VpError::Reflection)?;
     if !path.exists() {
         return Ok(Config::default());
     }
-    let content = fs::read_to_string(&path).map_err(|e| format!("Failed to read config: {e}"))?;
-    serde_json::from_str(&content).map_err(|e| format!("Failed to parse config: {e}"))
+    let content = fs::read_to_string(&path)?;
+    Ok(serde_json::from_str(&content)?)
 }
 
-pub fn load_pulse_state() -> Result<PulseState, String> {
-    let path = super::vigil_dir()?.join("pulse-state.json");
+pub fn load_pulse_state() -> VpResult<PulseState> {
+    let path = super::vigil_dir()
+        .map_err(VpError::Reflection)?
+        .join("pulse-state.json");
     if !path.exists() {
         return Ok(PulseState::default());
     }
-    let content =
-        fs::read_to_string(&path).map_err(|e| format!("Failed to read pulse state: {e}"))?;
-    serde_json::from_str(&content).map_err(|e| format!("Failed to parse pulse state: {e}"))
+    let content = fs::read_to_string(&path)?;
+    Ok(serde_json::from_str(&content)?)
 }
 
-pub fn save_pulse_state(state: &PulseState) -> Result<(), String> {
-    let path = super::vigil_dir()?.join("pulse-state.json");
-    let json = serde_json::to_string_pretty(state)
-        .map_err(|e| format!("Failed to serialize pulse state: {e}"))?;
-    fs::write(path, format!("{json}\n")).map_err(|e| format!("Failed to write pulse state: {e}"))
+pub fn save_pulse_state(state: &PulseState) -> VpResult<()> {
+    let path = super::vigil_dir()
+        .map_err(VpError::Reflection)?
+        .join("pulse-state.json");
+    let json = serde_json::to_string_pretty(state)?;
+    fs::write(path, format!("{json}\n"))?;
+    Ok(())
 }
 
-// --- Timestamp helpers (no chrono dependency) ---
-
-pub fn now_iso() -> String {
-    let duration = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = duration.as_secs();
-    let days = secs / 86400;
-    let time_secs = secs % 86400;
-    let hours = time_secs / 3600;
-    let minutes = (time_secs % 3600) / 60;
-    let seconds = time_secs % 60;
-    let (year, month, day) = days_to_date(days);
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        year, month, day, hours, minutes, seconds
-    )
-}
-
-pub fn now_epoch_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
-pub fn parse_iso_epoch(ts: &str) -> Option<u64> {
-    // Parse "YYYY-MM-DDThh:mm:ssZ" to rough epoch seconds
-    if ts.len() < 19 {
-        return None;
-    }
-    let year: u64 = ts[..4].parse().ok()?;
-    let month: u64 = ts[5..7].parse().ok()?;
-    let day: u64 = ts[8..10].parse().ok()?;
-    let hours: u64 = ts[11..13].parse().ok()?;
-    let minutes: u64 = ts[14..16].parse().ok()?;
-    let seconds: u64 = ts[17..19].parse().ok()?;
-
-    let days = date_to_days(year, month, day);
-    Some(days * 86400 + hours * 3600 + minutes * 60 + seconds)
-}
-
-fn days_to_date(days_since_epoch: u64) -> (u64, u64, u64) {
-    let z = days_since_epoch + 719468;
-    let era = z / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = if m <= 2 { y + 1 } else { y };
-    (year, m, d)
-}
-
-fn date_to_days(year: u64, month: u64, day: u64) -> u64 {
-    let y = if month <= 2 { year - 1 } else { year };
-    let m = if month <= 2 { month + 9 } else { month - 3 };
-    let era = y / 400;
-    let yoe = y - era * 400;
-    let doy = (153 * m + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146097 + doe - 719468
-}
+// Re-export shared timestamp helpers so existing callers like `state::now_iso()` keep working.
+pub use crate::util::{now_epoch_secs, now_iso, parse_iso_epoch};

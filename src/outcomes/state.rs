@@ -5,6 +5,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use super::outcome::OutcomeRecord;
+use crate::error::VpResult;
 
 /// Persisted outcome history.
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -24,7 +25,7 @@ impl CaliberState {
     }
 
     /// Save to disk, creating the caliber/ directory if needed.
-    pub fn save(&self, docs_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(&self, docs_dir: &Path) -> VpResult<()> {
         let dir = super::caliber_dir(docs_dir);
         std::fs::create_dir_all(&dir)?;
         let path = super::outcomes_file(docs_dir);

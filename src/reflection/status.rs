@@ -2,18 +2,13 @@ use owo_colors::OwoColorize;
 
 use super::state::{self, AlertLevel, Analysis, Config, SignalVector, Trend};
 use super::stats;
-
-const SIGNAL_NAMES: [&str; 4] = [
-    "vocabulary_diversity",
-    "question_generation",
-    "thought_lifecycle",
-    "evidence_grounding",
-];
+use crate::error::VpResult;
+use crate::util::SIGNAL_NAMES;
 
 const SPARKLINE_WIDTH: usize = 20;
 const AMPLITUDE_WINDOW: usize = 5;
 
-pub fn run(json_output: bool) -> Result<(), String> {
+pub fn run(json_output: bool) -> VpResult<()> {
     let config = state::load_config()?;
     let history = state::load_signals()?;
     let analysis = state::load_analysis()?;
@@ -29,7 +24,7 @@ fn print_dashboard(
     config: &Config,
     history: &[SignalVector],
     analysis: &Option<Analysis>,
-) -> Result<(), String> {
+) -> VpResult<()> {
     // Header
     println!();
     println!("  {} — cognitive health dashboard", "vigil-echo".bold());
@@ -259,72 +254,88 @@ fn detect_anomalies(history: &[SignalVector]) -> Vec<String> {
 
 // --- JSON output ---
 
+/// Build JSON stats for a single signal.
+fn build_signal_json(
+    name: &str,
+    history: &[SignalVector],
+    analysis: &Option<Analysis>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let series = stats::signal_series(history, name);
+    let mut sig = serde_json::Map::new();
+
+    let current = series.last().copied();
+    sig.insert("current".into(), json_opt(current));
+    sig.insert("mean".into(), json_opt(stats::mean(&series)));
+    sig.insert("std_dev".into(), json_opt(stats::std_dev(&series)));
+    let amplitude = stats::rolling_amplitude(&series, AMPLITUDE_WINDOW);
+    let spark_series = if amplitude.is_empty() {
+        &series
+    } else {
+        &amplitude
+    };
+    sig.insert(
+        "sparkline".into(),
+        serde_json::Value::String(stats::sparkline(spark_series, SPARKLINE_WIDTH)),
+    );
+
+    if let Some(v) = current {
+        if let Some(n) = serde_json::Number::from_f64(stats::percentile_rank(v, &series)) {
+            sig.insert("percentile".into(), serde_json::Value::Number(n));
+        }
+        if let (Some(m), Some(sd)) = (stats::mean(&series), stats::std_dev(&series)) {
+            if sd > f64::EPSILON {
+                if let Some(n) = serde_json::Number::from_f64(stats::z_score(v, m, sd)) {
+                    sig.insert("z_score".into(), serde_json::Value::Number(n));
+                }
+            }
+        }
+        let zone = match signal_zone(name, v) {
+            Zone::Healthy => "healthy",
+            Zone::Watch => "watch",
+            Zone::Concern => "concern",
+        };
+        sig.insert("health_zone".into(), serde_json::Value::String(zone.into()));
+    }
+
+    let (streak_dir, streak_count) = stats::streak(&series);
+    sig.insert(
+        "streak_direction".into(),
+        serde_json::Value::Number(serde_json::Number::from(streak_dir as i64)),
+    );
+    sig.insert(
+        "streak_count".into(),
+        serde_json::Value::Number(serde_json::Number::from(streak_count as u64)),
+    );
+
+    if let Some(analysis) = analysis {
+        if let Some(trend) = analysis.signals.get(name) {
+            sig.insert(
+                "trend".into(),
+                serde_json::Value::String(format!("{:?}", trend.trend)),
+            );
+            if let Some(n) = serde_json::Number::from_f64(trend.delta) {
+                sig.insert("delta".into(), serde_json::Value::Number(n));
+            }
+        }
+    }
+
+    sig
+}
+
 fn print_json(
     config: &Config,
     history: &[SignalVector],
     analysis: &Option<Analysis>,
-) -> Result<(), String> {
+) -> VpResult<()> {
     let mut output = serde_json::Map::new();
 
     // Per-signal stats
     let mut signals_json = serde_json::Map::new();
     for &name in &SIGNAL_NAMES {
-        let series = stats::signal_series(history, name);
-        let mut sig = serde_json::Map::new();
-
-        let current = series.last().copied();
-        sig.insert("current".into(), json_opt(current));
-        sig.insert("mean".into(), json_opt(stats::mean(&series)));
-        sig.insert("std_dev".into(), json_opt(stats::std_dev(&series)));
-        let amplitude = stats::rolling_amplitude(&series, AMPLITUDE_WINDOW);
-        let spark_series = if amplitude.is_empty() { &series } else { &amplitude };
-        sig.insert(
-            "sparkline".into(),
-            serde_json::Value::String(stats::sparkline(spark_series, SPARKLINE_WIDTH)),
+        signals_json.insert(
+            name.into(),
+            serde_json::Value::Object(build_signal_json(name, history, analysis)),
         );
-
-        if let Some(v) = current {
-            if let Some(n) = serde_json::Number::from_f64(stats::percentile_rank(v, &series)) {
-                sig.insert("percentile".into(), serde_json::Value::Number(n));
-            }
-            if let (Some(m), Some(sd)) = (stats::mean(&series), stats::std_dev(&series)) {
-                if sd > f64::EPSILON {
-                    if let Some(n) = serde_json::Number::from_f64(stats::z_score(v, m, sd)) {
-                        sig.insert("z_score".into(), serde_json::Value::Number(n));
-                    }
-                }
-            }
-            let zone = match signal_zone(name, v) {
-                Zone::Healthy => "healthy",
-                Zone::Watch => "watch",
-                Zone::Concern => "concern",
-            };
-            sig.insert("health_zone".into(), serde_json::Value::String(zone.into()));
-        }
-
-        let (streak_dir, streak_count) = stats::streak(&series);
-        sig.insert(
-            "streak_direction".into(),
-            serde_json::Value::Number(serde_json::Number::from(streak_dir as i64)),
-        );
-        sig.insert(
-            "streak_count".into(),
-            serde_json::Value::Number(serde_json::Number::from(streak_count as u64)),
-        );
-
-        if let Some(analysis) = analysis {
-            if let Some(trend) = analysis.signals.get(name) {
-                sig.insert(
-                    "trend".into(),
-                    serde_json::Value::String(format!("{:?}", trend.trend)),
-                );
-                if let Some(n) = serde_json::Number::from_f64(trend.delta) {
-                    sig.insert("delta".into(), serde_json::Value::Number(n));
-                }
-            }
-        }
-
-        signals_json.insert(name.into(), serde_json::Value::Object(sig));
     }
     output.insert("signals".into(), serde_json::Value::Object(signals_json));
 
@@ -374,8 +385,7 @@ fn print_json(
     );
     output.insert("config".into(), serde_json::Value::Object(cfg));
 
-    let json_str = serde_json::to_string_pretty(&serde_json::Value::Object(output))
-        .map_err(|e| format!("JSON serialization failed: {e}"))?;
+    let json_str = serde_json::to_string_pretty(&serde_json::Value::Object(output))?;
     println!("{json_str}");
 
     Ok(())
@@ -412,12 +422,4 @@ fn signal_zone(name: &str, value: f64) -> Zone {
     }
 }
 
-fn friendly_name(name: &str) -> &str {
-    match name {
-        "vocabulary_diversity" => "vocabulary diversity",
-        "question_generation" => "question generation",
-        "thought_lifecycle" => "thought lifecycle",
-        "evidence_grounding" => "evidence grounding",
-        _ => name,
-    }
-}
+use crate::util::friendly_name;

@@ -8,8 +8,10 @@ use std::path::Path;
 
 use pulse_system_types::monitoring::{
     CalibrationReport, Confidence, OutcomeRecord, OutcomeSummary, PipelineSnapshot,
-    PipelineThresholds, ThresholdRecommendation, ThresholdStatus,
+    PipelineThresholds, ThresholdRecommendation,
 };
+
+use crate::error::VpResult;
 
 /// Minimum evidence points to emit any recommendation.
 const MIN_EVIDENCE: usize = 5;
@@ -19,7 +21,7 @@ pub fn run(
     claude_dir: &Path,
     docs_dir: &Path,
     thresholds: &PipelineThresholds,
-) -> Result<CalibrationReport, String> {
+) -> VpResult<CalibrationReport> {
     let history = load_history(claude_dir);
     let outcomes = load_outcomes(docs_dir);
     let confidence = overall_confidence(history.len(), outcomes.len());
@@ -393,16 +395,6 @@ fn overall_confidence(snapshots: usize, outcomes: usize) -> Confidence {
         Confidence::Medium
     } else {
         Confidence::High
-    }
-}
-
-fn _threshold_status(count: usize, soft: usize, hard: usize) -> ThresholdStatus {
-    if count >= hard {
-        ThresholdStatus::Red
-    } else if count >= soft {
-        ThresholdStatus::Yellow
-    } else {
-        ThresholdStatus::Green
     }
 }
 

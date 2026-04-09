@@ -16,68 +16,70 @@ pub mod scan;
 pub mod state;
 pub mod status;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use pulse_system_types::monitoring::PipelineThresholds;
 
 // ---------------------------------------------------------------------------
 // Path helpers
 // ---------------------------------------------------------------------------
 
-pub fn praxis_dir(claude_dir: &PathBuf) -> PathBuf {
+pub fn praxis_dir(claude_dir: &Path) -> PathBuf {
     claude_dir.join("praxis")
 }
 
-pub fn state_file(claude_dir: &PathBuf) -> PathBuf {
+pub fn state_file(claude_dir: &Path) -> PathBuf {
     praxis_dir(claude_dir).join("state.json")
 }
 
-pub fn checkpoints_dir(claude_dir: &PathBuf) -> PathBuf {
+pub fn checkpoints_dir(claude_dir: &Path) -> PathBuf {
     praxis_dir(claude_dir).join("checkpoints")
 }
 
-pub fn settings_file(claude_dir: &PathBuf) -> PathBuf {
+pub fn settings_file(claude_dir: &Path) -> PathBuf {
     claude_dir.join("settings.json")
 }
 
-pub fn rules_dir(claude_dir: &PathBuf) -> PathBuf {
+pub fn rules_dir(claude_dir: &Path) -> PathBuf {
     claude_dir.join("rules")
 }
 
 // Document paths
-pub fn learning_file(docs_dir: &PathBuf) -> PathBuf {
+pub fn learning_file(docs_dir: &Path) -> PathBuf {
     docs_dir.join("LEARNING.md")
 }
 
-pub fn thoughts_file(docs_dir: &PathBuf) -> PathBuf {
+pub fn thoughts_file(docs_dir: &Path) -> PathBuf {
     docs_dir.join("THOUGHTS.md")
 }
 
-pub fn curiosity_file(docs_dir: &PathBuf) -> PathBuf {
+pub fn curiosity_file(docs_dir: &Path) -> PathBuf {
     docs_dir.join("CURIOSITY.md")
 }
 
-pub fn reflections_file(docs_dir: &PathBuf) -> PathBuf {
+pub fn reflections_file(docs_dir: &Path) -> PathBuf {
     docs_dir.join("REFLECTIONS.md")
 }
 
-pub fn praxis_file(docs_dir: &PathBuf) -> PathBuf {
+pub fn praxis_file(docs_dir: &Path) -> PathBuf {
     docs_dir.join("PRAXIS.md")
 }
 
-pub fn self_file(docs_dir: &PathBuf) -> PathBuf {
+pub fn self_file(docs_dir: &Path) -> PathBuf {
     docs_dir.join("SELF.md")
 }
 
-pub fn session_log_file(docs_dir: &PathBuf) -> PathBuf {
+pub fn session_log_file(docs_dir: &Path) -> PathBuf {
     docs_dir.join("SESSION-LOG.md")
 }
 
 // Archive directories
-pub fn archives_dir(docs_dir: &PathBuf) -> PathBuf {
+pub fn archives_dir(docs_dir: &Path) -> PathBuf {
     docs_dir.join("archives")
 }
 
 // Intent queue
-pub fn intent_queue_file(docs_dir: &PathBuf) -> PathBuf {
+pub fn intent_queue_file(docs_dir: &Path) -> PathBuf {
     docs_dir.join("intent-queue.json")
 }
 
@@ -94,6 +96,7 @@ pub struct PraxisConfig {
     pub curiosity_staleness_days: u32,
     pub freeze_threshold: u32,
     pub pulse_cooldown_secs: u64,
+    pub thresholds: PipelineThresholds,
 }
 
 impl Default for PraxisConfig {
@@ -105,6 +108,7 @@ impl Default for PraxisConfig {
             curiosity_staleness_days: 14,
             freeze_threshold: 3,
             pulse_cooldown_secs: 60,
+            thresholds: PipelineThresholds::default(),
         }
     }
 }
@@ -127,11 +131,11 @@ impl PraxisEcho {
         &self.config
     }
 
-    pub fn claude_dir(&self) -> &PathBuf {
+    pub fn claude_dir(&self) -> &Path {
         &self.config.claude_dir
     }
 
-    pub fn docs_dir(&self) -> &PathBuf {
+    pub fn docs_dir(&self) -> &Path {
         &self.config.docs_dir
     }
 }
