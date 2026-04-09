@@ -3,13 +3,15 @@ use owo_colors::OwoColorize;
 use super::state::{self, AlertLevel, Analysis, Config, SignalVector, Trend};
 use super::stats;
 
-const SIGNAL_NAMES: [&str; 6] = [
+const SIGNAL_NAMES: [&str; 8] = [
     "vocabulary_diversity",
     "question_generation",
     "thought_lifecycle",
     "evidence_grounding",
     "conclusion_novelty",
     "intellectual_honesty",
+    "position_delta",
+    "comfort_index",
 ];
 
 const SPARKLINE_WIDTH: usize = 20;
@@ -406,6 +408,18 @@ fn signal_zone(name: &str, value: f64) -> Zone {
                 Zone::Healthy
             }
         }
+        // position_delta: higher = more principled changes = healthier
+        "position_delta" => threshold_zone(value, 0.30, 0.50),
+        // comfort_index: INVERTED — lower is healthier, higher is concerning
+        "comfort_index" => {
+            if value > 0.6 {
+                Zone::Concern
+            } else if value > 0.3 {
+                Zone::Watch
+            } else {
+                Zone::Healthy
+            }
+        }
         _ => threshold_zone(value, 0.25, 0.50),
     }
 }
@@ -428,6 +442,8 @@ fn friendly_name(name: &str) -> &str {
         "evidence_grounding" => "evidence grounding",
         "conclusion_novelty" => "conclusion novelty",
         "intellectual_honesty" => "intellectual honesty",
+        "position_delta" => "position delta",
+        "comfort_index" => "comfort index",
         _ => name,
     }
 }

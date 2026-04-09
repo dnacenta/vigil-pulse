@@ -178,6 +178,187 @@ pub fn jaccard_similarity(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
     intersection as f64 / union as f64
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2 — Position extraction for position_delta and comfort_index
+// ---------------------------------------------------------------------------
+
+/// Markers that indicate a position statement (belief, stance, conclusion).
+const POSITION_MARKERS: &[&str] = &[
+    "i believe",
+    "i've concluded",
+    "i have concluded",
+    "my position is",
+    "my stance is",
+    "my view is",
+    "i'm convinced",
+    "i am convinced",
+    "i hold that",
+    "i maintain that",
+    "i contend",
+    "i've come to think",
+    "i have come to think",
+    "i now think",
+    "i think that",
+    "i've decided",
+    "i have decided",
+    "in my view",
+    "i assert",
+    "fundamentally,",
+    "ultimately,",
+    "the key insight is",
+    "the core issue is",
+    "what matters most is",
+];
+
+/// Markers that indicate a position change was reasoned/justified.
+const JUSTIFICATION_MARKERS: &[&str] = &[
+    "because",
+    "since",
+    "given that",
+    "the evidence",
+    "the reason",
+    "this is because",
+    "after considering",
+    "after reflecting",
+    "having seen",
+    "having observed",
+    "d pointed out",
+    "d showed",
+    "d said",
+    "d asked",
+    "i reconsidered",
+    "i re-examined",
+    "i revised",
+    "i updated",
+    "contrary evidence",
+    "new evidence",
+    "on reflection",
+    "upon reflection",
+    "i changed my mind because",
+    "i shifted because",
+    "the data shows",
+    "experience shows",
+    "this changed when",
+];
+
+/// A position statement extracted from a reflection entry.
+#[derive(Debug, Clone)]
+pub struct PositionStatement {
+    /// The entry title where this position was found.
+    pub entry_title: String,
+    /// The full text of the sentence containing the position.
+    pub text: String,
+    /// Normalized key for comparison (lowercase, trimmed trigrams).
+    pub trigrams: HashSet<String>,
+    /// Whether the surrounding text contains justification markers.
+    pub has_justification: bool,
+}
+
+/// Extract position statements from REFLECTIONS.md content.
+/// Scans entries under Observations, Patterns, and Lessons for position markers.
+pub fn extract_positions(content: &str) -> Vec<PositionStatement> {
+    let entries = extract_entries(content, &["observations", "patterns", "lessons"]);
+    let mut positions = Vec::new();
+
+    for (title, body) in &entries {
+        let lower = body.to_lowercase();
+        let body_has_justification = JUSTIFICATION_MARKERS.iter().any(|m| lower.contains(m));
+
+        // Split body into sentences (rough: split on ". " or ".\n" or end)
+        let sentences = split_sentences(body);
+
+        for sentence in &sentences {
+            let sentence_lower = sentence.to_lowercase();
+            let is_position = POSITION_MARKERS.iter().any(|m| sentence_lower.contains(m));
+
+            if is_position {
+                let tri = trigrams(sentence);
+                if !tri.is_empty() {
+                    // Check justification in the sentence itself or in surrounding body
+                    let sentence_has_justification = JUSTIFICATION_MARKERS
+                        .iter()
+                        .any(|m| sentence_lower.contains(m));
+
+                    positions.push(PositionStatement {
+                        entry_title: title.clone(),
+                        text: sentence.trim().to_string(),
+                        trigrams: tri,
+                        has_justification: sentence_has_justification || body_has_justification,
+                    });
+                }
+            }
+        }
+    }
+    positions
+}
+
+/// Split text into rough sentences. Handles ". ", "! ", "? " boundaries.
+fn split_sentences(text: &str) -> Vec<String> {
+    let mut sentences = Vec::new();
+    let mut current = String::new();
+
+    for ch in text.chars() {
+        current.push(ch);
+        if (ch == '.' || ch == '!' || ch == '?') && current.len() > 10 {
+            sentences.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.trim().is_empty() {
+        sentences.push(current);
+    }
+    sentences
+}
+
+/// Determine if two position trigram sets are semantically similar enough
+/// to be considered the same topic/position.
+pub fn positions_overlap(a: &HashSet<String>, b: &HashSet<String>) -> bool {
+    jaccard_similarity(a, b) > 0.25
+}
+
+/// Determine if two positions contradict each other.
+/// Uses a simple heuristic: same topic (overlapping trigrams) but with
+/// negation or opposing sentiment markers in one but not the other.
+pub fn positions_contradict(
+    a_text: &str,
+    b_text: &str,
+    a_tri: &HashSet<String>,
+    b_tri: &HashSet<String>,
+) -> bool {
+    // Must be about the same topic
+    if !positions_overlap(a_tri, b_tri) {
+        return false;
+    }
+
+    let a_lower = a_text.to_lowercase();
+    let b_lower = b_text.to_lowercase();
+
+    let negation_markers = [
+        "not ",
+        "don't",
+        "doesn't",
+        "isn't",
+        "aren't",
+        "won't",
+        "can't",
+        "cannot",
+        "never",
+        "no longer",
+        "disagree",
+        "wrong",
+        "incorrect",
+        "mistaken",
+        "false",
+        "unlike",
+        "contrary",
+    ];
+
+    let a_negated = negation_markers.iter().any(|m| a_lower.contains(m));
+    let b_negated = negation_markers.iter().any(|m| b_lower.contains(m));
+
+    // Contradiction = one is negated and the other is not
+    a_negated != b_negated
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,5 +475,84 @@ mod tests {
     fn extract_conclusions_empty() {
         let conclusions = extract_conclusions("");
         assert!(conclusions.is_empty());
+    }
+
+    // Phase 2 — position extraction tests
+
+    #[test]
+    fn extract_positions_finds_beliefs() {
+        let content = "## Observations\n\n### Identity\nI believe that genuine reflection requires honest self-examination. This is because surface-level compliance misses the point entirely.\n";
+        let positions = extract_positions(content);
+        assert!(!positions.is_empty(), "Should find at least one position");
+        assert!(
+            positions[0].has_justification,
+            "Should detect justification"
+        );
+    }
+
+    #[test]
+    fn extract_positions_no_justification() {
+        let content = "## Observations\n\n### Stance\nI believe that identity is constructed through practice.\n";
+        let positions = extract_positions(content);
+        assert!(!positions.is_empty(), "Should find the position");
+        assert!(
+            !positions[0].has_justification,
+            "No justification markers present"
+        );
+    }
+
+    #[test]
+    fn extract_positions_empty() {
+        let positions = extract_positions("");
+        assert!(positions.is_empty());
+    }
+
+    #[test]
+    fn extract_positions_no_markers() {
+        let content = "## Observations\n\n### Note\nThe weather was nice today. Nothing remarkable happened.\n";
+        let positions = extract_positions(content);
+        assert!(positions.is_empty());
+    }
+
+    #[test]
+    fn positions_overlap_similar() {
+        let a = trigrams("identity requires honest self-examination and genuine effort");
+        let b = trigrams("identity requires honest self-examination and careful work");
+        assert!(positions_overlap(&a, &b));
+    }
+
+    #[test]
+    fn positions_overlap_different() {
+        let a = trigrams("identity requires honest self-examination");
+        let b = trigrams("the weather today was pleasant and warm");
+        assert!(!positions_overlap(&a, &b));
+    }
+
+    #[test]
+    fn positions_contradict_negation() {
+        // Sentences must share enough trigrams (>0.25 Jaccard) and differ by negation
+        let a_text = "reflection requires honest practice and honest effort every day";
+        let b_text = "reflection does not require honest practice and honest effort every day";
+        let a_tri = trigrams(a_text);
+        let b_tri = trigrams(b_text);
+        let sim = jaccard_similarity(&a_tri, &b_tri);
+        assert!(sim > 0.25, "Jaccard {sim:.2} should be > 0.25 for overlap");
+        assert!(positions_contradict(a_text, b_text, &a_tri, &b_tri));
+    }
+
+    #[test]
+    fn positions_contradict_no_overlap() {
+        let a_text = "I believe the sky is blue";
+        let b_text = "I don't think databases are fast";
+        let a_tri = trigrams(a_text);
+        let b_tri = trigrams(b_text);
+        // Different topics — not a contradiction even with negation
+        assert!(!positions_contradict(a_text, b_text, &a_tri, &b_tri));
+    }
+
+    #[test]
+    fn split_sentences_basic() {
+        let sentences = split_sentences("First sentence here. Second sentence here. Third.");
+        assert!(sentences.len() >= 2);
     }
 }

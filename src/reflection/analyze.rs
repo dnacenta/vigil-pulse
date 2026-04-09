@@ -9,6 +9,8 @@ const SIGNAL_NAMES: &[&str] = &[
     "evidence_grounding",
     "conclusion_novelty",
     "intellectual_honesty",
+    "position_delta",
+    "comfort_index",
 ];
 
 /// Extract a signal value by name from a SignalVector.
@@ -20,6 +22,8 @@ fn get_signal(sv: &SignalVector, name: &str) -> Option<f64> {
         "evidence_grounding" => sv.signals.evidence_grounding,
         "conclusion_novelty" => sv.signals.conclusion_novelty,
         "intellectual_honesty" => sv.signals.intellectual_honesty,
+        "position_delta" => sv.signals.position_delta,
+        "comfort_index" => sv.signals.comfort_index,
         _ => None,
     }
 }
@@ -204,6 +208,14 @@ fn decline_message(name: &str, current: Option<f64>, delta: f64) -> String {
             "intellectual_honesty at {} ({:+.2}) — uncertainty acknowledgment shifting",
             val, delta
         ),
+        "position_delta" => format!(
+            "position_delta at {} ({:+.2}) — position changes becoming less principled",
+            val, delta
+        ),
+        "comfort_index" => format!(
+            "comfort_index at {} ({:+.2}) — sycophancy indicators shifting",
+            val, delta
+        ),
         _ => format!("{} at {} ({:+.2})", name, val, delta),
     }
 }
@@ -216,6 +228,8 @@ fn friendly_name(name: &str) -> &str {
         "evidence_grounding" => "evidence grounding",
         "conclusion_novelty" => "conclusion novelty",
         "intellectual_honesty" => "intellectual honesty",
+        "position_delta" => "position delta",
+        "comfort_index" => "comfort index",
         _ => name,
     }
 }
@@ -236,6 +250,8 @@ mod tests {
                 evidence_grounding: Some(eg),
                 conclusion_novelty: None,
                 intellectual_honesty: None,
+                position_delta: None,
+                comfort_index: None,
             },
             document_hashes: HashMap::new(),
         }

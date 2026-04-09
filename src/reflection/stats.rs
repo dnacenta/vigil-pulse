@@ -13,6 +13,8 @@ pub fn signal_series(history: &[SignalVector], name: &str) -> Vec<f64> {
             "evidence_grounding" => sv.signals.evidence_grounding,
             "conclusion_novelty" => sv.signals.conclusion_novelty,
             "intellectual_honesty" => sv.signals.intellectual_honesty,
+            "position_delta" => sv.signals.position_delta,
+            "comfort_index" => sv.signals.comfort_index,
             _ => None,
         })
         .collect()
@@ -240,10 +242,14 @@ mod tests {
                 evidence_grounding: Some(0.8),
                 conclusion_novelty: None,
                 intellectual_honesty: None,
+                position_delta: None,
+                comfort_index: None,
             },
             document_hashes: HashMap::new(),
         }];
         assert_eq!(signal_series(&history, "vocabulary_diversity"), vec![0.5]);
         assert!(signal_series(&history, "thought_lifecycle").is_empty());
+        assert!(signal_series(&history, "position_delta").is_empty());
+        assert!(signal_series(&history, "comfort_index").is_empty());
     }
 }

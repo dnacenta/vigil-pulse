@@ -90,6 +90,8 @@ fn friendly_name(name: &str) -> &str {
         "evidence_grounding" => "evidence grounding",
         "conclusion_novelty" => "conclusion novelty",
         "intellectual_honesty" => "intellectual honesty",
+        "position_delta" => "position delta",
+        "comfort_index" => "comfort index",
         _ => name,
     }
 }

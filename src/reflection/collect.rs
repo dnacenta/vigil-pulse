@@ -17,6 +17,20 @@ pub fn run(trigger: &str) -> Result<(), String> {
         .map(|e| e.trigrams.iter().cloned().collect())
         .collect();
 
+    // Load position index for position_delta and comfort_index
+    let position_index = state::load_position_index()?;
+    let history_positions: Vec<(String, HashSet<String>, bool)> = position_index
+        .entries
+        .iter()
+        .map(|e| {
+            (
+                e.text.clone(),
+                e.trigrams.iter().cloned().collect(),
+                e.has_justification,
+            )
+        })
+        .collect();
+
     // Extract signals
     let sigs = state::Signals {
         vocabulary_diversity: signals::vocabulary_diversity(&reflections_content),
@@ -25,10 +39,15 @@ pub fn run(trigger: &str) -> Result<(), String> {
         evidence_grounding: signals::evidence_grounding(&reflections_content),
         conclusion_novelty: signals::conclusion_novelty(&reflections_content, &history_trigrams),
         intellectual_honesty: signals::intellectual_honesty(&reflections_content),
+        position_delta: signals::position_delta(&reflections_content, &history_positions),
+        comfort_index: signals::comfort_index(&reflections_content, &history_positions),
     };
 
     // Append current conclusions to the index (append-only)
     update_conclusion_index(&reflections_content, &conclusion_index)?;
+
+    // Append current positions to the index (append-only)
+    update_position_index(&reflections_content, &position_index)?;
 
     // Document hashes for change detection
     let mut hashes = HashMap::new();
@@ -74,6 +93,8 @@ pub fn run(trigger: &str) -> Result<(), String> {
     print_signal("  evidence_grounding", sigs.evidence_grounding);
     print_signal("  conclusion_novelty", sigs.conclusion_novelty);
     print_signal("  intellectual_honesty", sigs.intellectual_honesty);
+    print_signal("  position_delta", sigs.position_delta);
+    print_signal("  comfort_index", sigs.comfort_index);
     println!(
         "  History: {} data points ({} max)",
         history.len(),
@@ -135,6 +156,62 @@ fn update_conclusion_index(
     }
 
     state::save_conclusion_index(&index)
+}
+
+/// Maximum entries in the position index before trimming oldest.
+const MAX_POSITION_ENTRIES: usize = 500;
+
+/// Append current positions to the persistent index for future comparison.
+/// Deduplicates against existing entries (skips if Jaccard > 0.95) and trims to
+/// MAX_POSITION_ENTRIES to prevent unbounded growth.
+fn update_position_index(
+    reflections_content: &str,
+    existing: &state::PositionIndex,
+) -> Result<(), String> {
+    let positions = parser::extract_positions(reflections_content);
+    if positions.is_empty() {
+        return Ok(());
+    }
+
+    let mut index = existing.clone();
+    let timestamp = state::now_iso();
+
+    // Build existing trigram sets for dedup
+    let existing_sets: Vec<std::collections::HashSet<String>> = index
+        .entries
+        .iter()
+        .map(|e| e.trigrams.iter().cloned().collect())
+        .collect();
+
+    for pos in &positions {
+        if pos.trigrams.is_empty() {
+            continue;
+        }
+        // Skip near-duplicates
+        let is_duplicate = existing_sets
+            .iter()
+            .any(|existing| parser::jaccard_similarity(&pos.trigrams, existing) > 0.95);
+        if is_duplicate {
+            continue;
+        }
+        let mut sorted: Vec<String> = pos.trigrams.iter().cloned().collect();
+        sorted.sort();
+        index.entries.push(state::PositionEntry {
+            timestamp: timestamp.clone(),
+            entry_title: pos.entry_title.clone(),
+            text: pos.text.clone(),
+            trigrams: sorted,
+            has_justification: pos.has_justification,
+        });
+    }
+
+    // Trim oldest entries if over the cap
+    if index.entries.len() > MAX_POSITION_ENTRIES {
+        let excess = index.entries.len() - MAX_POSITION_ENTRIES;
+        index.entries.drain(..excess);
+    }
+
+    state::save_position_index(&index)
 }
 
 fn print_signal(label: &str, value: Option<f64>) {

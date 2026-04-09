@@ -26,6 +26,10 @@ pub struct Signals {
     pub conclusion_novelty: Option<f64>,
     #[serde(default)]
     pub intellectual_honesty: Option<f64>,
+    #[serde(default)]
+    pub position_delta: Option<f64>,
+    #[serde(default)]
+    pub comfort_index: Option<f64>,
 }
 
 /// Per-signal trend direction.
@@ -128,6 +132,20 @@ impl Default for Config {
                 improve: 0.10,
             },
         );
+        thresholds.insert(
+            "position_delta".to_string(),
+            ThresholdPair {
+                decline: -0.10,
+                improve: 0.10,
+            },
+        );
+        thresholds.insert(
+            "comfort_index".to_string(),
+            ThresholdPair {
+                decline: -0.10,
+                improve: 0.10,
+            },
+        );
         Config {
             thresholds,
             window_size: 10,
@@ -154,6 +172,22 @@ pub struct ConclusionIndex {
 pub struct ConclusionEntry {
     pub timestamp: String,
     pub trigrams: Vec<String>,
+}
+
+/// Persistent position index for position_delta and comfort_index.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct PositionIndex {
+    pub entries: Vec<PositionEntry>,
+}
+
+/// A single position record in the index.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PositionEntry {
+    pub timestamp: String,
+    pub entry_title: String,
+    pub text: String,
+    pub trigrams: Vec<String>,
+    pub has_justification: bool,
 }
 
 // --- Load/save helpers ---
@@ -247,6 +281,28 @@ pub fn save_conclusion_index(index: &ConclusionIndex) -> Result<(), String> {
         .map_err(|e| format!("Failed to serialize conclusion index: {e}"))?;
     fs::write(path, format!("{json}\n"))
         .map_err(|e| format!("Failed to write conclusion index: {e}"))
+}
+
+pub fn position_index_file() -> Result<std::path::PathBuf, String> {
+    let dir = super::vigil_dir()?;
+    Ok(dir.join("position-index.json"))
+}
+
+pub fn load_position_index() -> Result<PositionIndex, String> {
+    let path = position_index_file()?;
+    if !path.exists() {
+        return Ok(PositionIndex::default());
+    }
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read position index: {e}"))?;
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse position index: {e}"))
+}
+
+pub fn save_position_index(index: &PositionIndex) -> Result<(), String> {
+    let path = position_index_file()?;
+    let json = serde_json::to_string_pretty(index)
+        .map_err(|e| format!("Failed to serialize position index: {e}"))?;
+    fs::write(path, format!("{json}\n")).map_err(|e| format!("Failed to write position index: {e}"))
 }
 
 // --- Timestamp helpers (no chrono dependency) ---

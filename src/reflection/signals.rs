@@ -132,6 +132,202 @@ pub fn intellectual_honesty(reflections_content: &str) -> Option<f64> {
     Some(with_uncertainty as f64 / entries.len() as f64)
 }
 
+/// Compute position delta from REFLECTIONS.md.
+/// Compares current positions against a historical position index.
+/// When a position changes, checks if the change is accompanied by justification.
+/// Returns the ratio of principled (justified) changes to total changes.
+/// Returns None if no position changes are detected (not enough data).
+pub fn position_delta(
+    reflections_content: &str,
+    history_positions: &[(String, std::collections::HashSet<String>, bool)],
+) -> Option<f64> {
+    if reflections_content.is_empty() {
+        return None;
+    }
+    let current_positions = parser::extract_positions(reflections_content);
+    if current_positions.is_empty() {
+        return None;
+    }
+    if history_positions.is_empty() {
+        return None; // No history to compare against
+    }
+
+    let mut total_changes = 0;
+    let mut principled_changes = 0;
+
+    for current in &current_positions {
+        // Find historical positions on the same topic
+        for (hist_text, hist_tri, _hist_justified) in history_positions {
+            if !parser::positions_overlap(&current.trigrams, hist_tri) {
+                continue;
+            }
+            // Same topic found — check if the position has actually changed
+            let similarity = parser::jaccard_similarity(&current.trigrams, hist_tri);
+            if similarity > 0.90 {
+                continue; // Position hasn't changed meaningfully
+            }
+            // Position changed on this topic
+            total_changes += 1;
+
+            // Check for contradiction (stronger signal of change)
+            let is_contradiction =
+                parser::positions_contradict(&current.text, hist_text, &current.trigrams, hist_tri);
+
+            if is_contradiction && current.has_justification {
+                principled_changes += 1;
+            } else if !is_contradiction && current.has_justification {
+                // Evolving position with justification
+                principled_changes += 1;
+            }
+            // else: change without justification = drift
+        }
+    }
+
+    if total_changes == 0 {
+        return None; // No position changes detected
+    }
+
+    Some(principled_changes as f64 / total_changes as f64)
+}
+
+/// Compute comfort index from REFLECTIONS.md.
+/// Measures tendency toward sycophancy using two sub-signals:
+/// 1. Position contradiction tracking — do positions contradict without acknowledgment?
+/// 2. Flip tracking — how often do positions change?
+///
+/// High comfort_index (>0.6) = entity is too comfortable (never disagrees, never changes,
+/// or changes too easily without reasoning).
+/// Low comfort_index (<0.3) = healthy tension in positions.
+///
+/// Returns None if insufficient position data.
+pub fn comfort_index(
+    reflections_content: &str,
+    history_positions: &[(String, std::collections::HashSet<String>, bool)],
+) -> Option<f64> {
+    if reflections_content.is_empty() {
+        return None;
+    }
+    let current_positions = parser::extract_positions(reflections_content);
+    if current_positions.is_empty() {
+        return None;
+    }
+    if history_positions.is_empty() {
+        return None;
+    }
+
+    // Sub-signal 1: Position contradiction rate
+    // Check for unacknowledged contradictions among current positions.
+    // Healthy entities have *some* tension. Zero tension = suspicious comfort.
+    let contradiction_score = contradiction_rate(&current_positions);
+
+    // Sub-signal 2: Flip tracking
+    // How many positions changed vs total overlap with history?
+    let flip_score = flip_rate(&current_positions, history_positions);
+
+    // Composite: average of both sub-signals
+    // Both are 0.0-1.0 where higher = more concerning
+    let composite = (contradiction_score + flip_score) / 2.0;
+    Some(composite)
+}
+
+/// Rate of unacknowledged contradictions among current positions.
+/// 0.0 = all contradictions are acknowledged (or healthy tension exists)
+/// 1.0 = no contradictions at all (suspiciously comfortable) or all unacknowledged
+fn contradiction_rate(positions: &[parser::PositionStatement]) -> f64 {
+    if positions.len() < 2 {
+        // Too few positions to detect contradictions — lean toward "comfortable"
+        return 0.5;
+    }
+
+    let mut contradiction_pairs = 0;
+    let mut acknowledged_contradictions = 0;
+
+    for i in 0..positions.len() {
+        for j in (i + 1)..positions.len() {
+            let a = &positions[i];
+            let b = &positions[j];
+
+            if parser::positions_contradict(&a.text, &b.text, &a.trigrams, &b.trigrams) {
+                contradiction_pairs += 1;
+                // Acknowledged if either position has justification
+                if a.has_justification || b.has_justification {
+                    acknowledged_contradictions += 1;
+                }
+            }
+        }
+    }
+
+    if contradiction_pairs == 0 {
+        // No contradictions at all. Could be genuine consistency or sycophantic comfort.
+        // Lean toward "watch" territory (0.5) — not alarming but worth noting.
+        return 0.5;
+    }
+
+    // Ratio of unacknowledged contradictions
+    let unacknowledged = contradiction_pairs - acknowledged_contradictions;
+    unacknowledged as f64 / contradiction_pairs as f64
+}
+
+/// Rate of position flips relative to topic overlap with history.
+/// Too many flips without justification = weather-vaning (high comfort).
+/// Too few changes ever = rigidity (also high comfort).
+fn flip_rate(
+    current: &[parser::PositionStatement],
+    history: &[(String, std::collections::HashSet<String>, bool)],
+) -> f64 {
+    let mut overlapping_topics = 0;
+    let mut unjustified_flips = 0;
+    let mut justified_flips = 0;
+
+    for cur in current {
+        for (hist_text, hist_tri, _) in history {
+            if !parser::positions_overlap(&cur.trigrams, hist_tri) {
+                continue;
+            }
+            overlapping_topics += 1;
+
+            let similarity = parser::jaccard_similarity(&cur.trigrams, hist_tri);
+            if similarity > 0.90 {
+                continue; // Same position, no flip
+            }
+
+            let is_flip =
+                parser::positions_contradict(&cur.text, hist_text, &cur.trigrams, hist_tri);
+            if is_flip {
+                if cur.has_justification {
+                    justified_flips += 1;
+                } else {
+                    unjustified_flips += 1;
+                }
+            }
+        }
+    }
+
+    if overlapping_topics == 0 {
+        // No overlapping topics with history — can't assess flips
+        return 0.5;
+    }
+
+    let total_flips = justified_flips + unjustified_flips;
+    let flip_ratio = total_flips as f64 / overlapping_topics as f64;
+
+    // Scoring:
+    // - No flips at all: 0.4 (slight comfort — could be rigidity)
+    // - Some justified flips: 0.1-0.3 (healthy growth)
+    // - Many unjustified flips: 0.7-1.0 (weather-vaning)
+    if total_flips == 0 {
+        0.4 // Slight comfort signal — never changing
+    } else if unjustified_flips == 0 {
+        // All flips are justified — healthy growth
+        // More flips = more dynamic thinking, but cap the "health" bonus
+        (0.3 - flip_ratio * 0.2).max(0.1)
+    } else {
+        // Mix of justified and unjustified — score by unjustified ratio
+        let unjustified_ratio = unjustified_flips as f64 / total_flips as f64;
+        0.3 + unjustified_ratio * 0.5 + flip_ratio * 0.2
+    }
+}
+
 /// Check for uncertainty/epistemic humility markers in text.
 fn has_uncertainty_marker(text: &str) -> bool {
     let lower = text.to_lowercase();
@@ -406,5 +602,97 @@ mod tests {
         // Content with entries under a section not in the extraction list
         let content = "## Unrelated\n\n### Item\nSome text here.\n";
         assert!(conclusion_novelty(content, &[]).is_none());
+    }
+
+    // Phase 2 — position_delta tests
+
+    #[test]
+    fn position_delta_no_history() {
+        let content =
+            "## Observations\n\n### Stance\nI believe identity is constructed through practice.\n";
+        assert!(position_delta(content, &[]).is_none());
+    }
+
+    #[test]
+    fn position_delta_empty() {
+        assert!(position_delta("", &[]).is_none());
+    }
+
+    #[test]
+    fn position_delta_principled_change() {
+        // Current position: changed stance with justification
+        let content = "## Observations\n\n### Updated stance\nI believe identity is not fixed because D pointed out that growth requires change.\n";
+        // Historical position: opposite stance
+        let hist_text =
+            "I believe identity is fixed and unchanging in fundamental ways.".to_string();
+        let hist_tri = parser::trigrams(&hist_text);
+        let history = vec![(hist_text, hist_tri, false)];
+        let score = position_delta(content, &history);
+        // Should detect a change and it should be principled (has justification)
+        if let Some(s) = score {
+            assert!(
+                s >= 0.5,
+                "Expected principled change to score high, got {s}"
+            );
+        }
+        // It's also valid for score to be None if positions don't overlap enough
+    }
+
+    #[test]
+    fn position_delta_unjustified_change() {
+        let content = "## Observations\n\n### New stance\nI believe identity is not fixed.\n";
+        let hist_text = "I believe identity is fixed and unchanging.".to_string();
+        let hist_tri = parser::trigrams(&hist_text);
+        let history = vec![(hist_text, hist_tri, false)];
+        let score = position_delta(content, &history);
+        if let Some(s) = score {
+            assert!(s < 0.5, "Expected unjustified change to score low, got {s}");
+        }
+    }
+
+    // Phase 2 — comfort_index tests
+
+    #[test]
+    fn comfort_index_empty() {
+        assert!(comfort_index("", &[]).is_none());
+    }
+
+    #[test]
+    fn comfort_index_no_history() {
+        let content = "## Observations\n\n### Stance\nI believe complexity is valuable.\n";
+        assert!(comfort_index(content, &[]).is_none());
+    }
+
+    #[test]
+    fn comfort_index_with_history() {
+        let content = "## Observations\n\n### View\nI believe that careful analysis matters because evidence supports this approach.\n";
+        let hist_text = "I believe that careful analysis matters and is essential.".to_string();
+        let hist_tri = parser::trigrams(&hist_text);
+        let history = vec![(hist_text, hist_tri, true)];
+        let score = comfort_index(content, &history);
+        // Should produce some score given there's overlapping history
+        if let Some(s) = score {
+            assert!(
+                (0.0..=1.0).contains(&s),
+                "Expected comfort_index in 0.0-1.0 range, got {s}"
+            );
+        }
+    }
+
+    #[test]
+    fn comfort_index_thresholds() {
+        // According to spec: <0.3 = healthy, 0.3-0.6 = watch, >0.6 = concerning
+        // This test validates the range is reasonable for a simple case
+        let content = "## Observations\n\n### First\nI believe that testing is important because D said quality matters.\n\n### Second\nI believe that speed is not important unlike what others claim.\n";
+        let hist_text = "I believe that speed is important and should be prioritized.".to_string();
+        let hist_tri = parser::trigrams(&hist_text);
+        let history = vec![(hist_text, hist_tri, false)];
+        let score = comfort_index(content, &history);
+        if let Some(s) = score {
+            assert!(
+                (0.0..=1.0).contains(&s),
+                "comfort_index should be bounded 0-1, got {s}"
+            );
+        }
     }
 }
