@@ -222,6 +222,7 @@ mod tests {
                 question_generation: Some(qg),
                 thought_lifecycle: Some(tl),
                 evidence_grounding: Some(eg),
+                ..Default::default()
             },
             document_hashes: HashMap::new(),
         }

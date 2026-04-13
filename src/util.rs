@@ -132,11 +132,15 @@ pub fn hash_content(content: &str) -> String {
 // ---------------------------------------------------------------------------
 
 /// Canonical list of tracked cognitive signal names.
-pub const SIGNAL_NAMES: [&str; 4] = [
+pub const SIGNAL_NAMES: [&str; 8] = [
     "vocabulary_diversity",
     "question_generation",
     "thought_lifecycle",
     "evidence_grounding",
+    "conclusion_novelty",
+    "intellectual_honesty",
+    "position_delta",
+    "comfort_index",
 ];
 
 /// Human-friendly signal name.
@@ -146,6 +150,25 @@ pub fn friendly_name(name: &str) -> &str {
         "question_generation" => "question generation",
         "thought_lifecycle" => "thought lifecycle",
         "evidence_grounding" => "evidence grounding",
+        "conclusion_novelty" => "conclusion novelty",
+        "intellectual_honesty" => "intellectual honesty",
+        "position_delta" => "position delta",
+        "comfort_index" => "comfort index",
         _ => name,
+    }
+}
+
+/// Extract a signal value by name from a Signals struct.
+pub fn get_signal(signals: &crate::reflection::state::Signals, name: &str) -> Option<f64> {
+    match name {
+        "vocabulary_diversity" => signals.vocabulary_diversity,
+        "question_generation" => signals.question_generation,
+        "thought_lifecycle" => signals.thought_lifecycle,
+        "evidence_grounding" => signals.evidence_grounding,
+        "conclusion_novelty" => signals.conclusion_novelty,
+        "intellectual_honesty" => signals.intellectual_honesty,
+        "position_delta" => signals.position_delta,
+        "comfort_index" => signals.comfort_index,
+        _ => None,
     }
 }
