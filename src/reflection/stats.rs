@@ -6,13 +6,7 @@ const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█
 pub fn signal_series(history: &[SignalVector], name: &str) -> Vec<f64> {
     history
         .iter()
-        .filter_map(|sv| match name {
-            "vocabulary_diversity" => sv.signals.vocabulary_diversity,
-            "question_generation" => sv.signals.question_generation,
-            "thought_lifecycle" => sv.signals.thought_lifecycle,
-            "evidence_grounding" => sv.signals.evidence_grounding,
-            _ => None,
-        })
+        .filter_map(|sv| crate::util::get_signal(&sv.signals, name))
         .collect()
 }
 
@@ -276,6 +270,7 @@ mod tests {
                 question_generation: Some(3.0),
                 thought_lifecycle: None,
                 evidence_grounding: Some(0.8),
+                ..Default::default()
             },
             document_hashes: HashMap::new(),
         }];

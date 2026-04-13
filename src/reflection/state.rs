@@ -15,13 +15,23 @@ pub struct SignalVector {
     pub document_hashes: HashMap<String, String>,
 }
 
-/// The 4 Phase-1 signals. Null means document was missing.
+/// Cognitive quality signals. Null means document was missing or not enough data.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Signals {
+    // Phase 1 — activity signals
     pub vocabulary_diversity: Option<f64>,
     pub question_generation: Option<f64>,
     pub thought_lifecycle: Option<f64>,
     pub evidence_grounding: Option<f64>,
+    // Phase 2 — quality signals
+    #[serde(default)]
+    pub conclusion_novelty: Option<f64>,
+    #[serde(default)]
+    pub intellectual_honesty: Option<f64>,
+    #[serde(default)]
+    pub position_delta: Option<f64>,
+    #[serde(default)]
+    pub comfort_index: Option<f64>,
 }
 
 /// Per-signal trend direction.
@@ -110,6 +120,20 @@ impl Default for Config {
                 improve: 0.10,
             },
         );
+        for name in [
+            "conclusion_novelty",
+            "intellectual_honesty",
+            "position_delta",
+            "comfort_index",
+        ] {
+            thresholds.insert(
+                name.to_string(),
+                ThresholdPair {
+                    decline: -0.10,
+                    improve: 0.10,
+                },
+            );
+        }
         Config {
             thresholds,
             window_size: 10,
@@ -124,6 +148,62 @@ impl Default for Config {
 #[derive(Serialize, Deserialize, Default)]
 pub struct PulseState {
     pub last_pulse: Option<String>,
+}
+
+// --- Conclusion/Position indexes ---
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct ConclusionIndex {
+    pub entries: Vec<ConclusionEntry>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ConclusionEntry {
+    pub timestamp: String,
+    pub trigrams: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct PositionIndex {
+    pub entries: Vec<PositionEntry>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PositionEntry {
+    pub timestamp: String,
+    pub entry_title: String,
+    pub text: String,
+    pub trigrams: Vec<String>,
+    pub has_justification: bool,
+}
+
+// --- Calibration (HOT-2) ---
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CalibrationPrediction {
+    pub timestamp: String,
+    pub predictions: HashMap<String, f64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CalibrationRecord {
+    pub timestamp: String,
+    pub signals: Vec<CalibrationSignal>,
+    pub mean_surprise: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CalibrationSignal {
+    pub name: String,
+    pub predicted: f64,
+    pub actual: f64,
+    pub surprise: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct CalibrationHistory {
+    pub records: Vec<CalibrationRecord>,
+    pub pending_prediction: Option<CalibrationPrediction>,
 }
 
 // --- Load/save helpers ---
@@ -195,6 +275,54 @@ pub fn save_pulse_state(state: &PulseState) -> VpResult<()> {
         .join("pulse-state.json");
     let json = serde_json::to_string_pretty(state)?;
     fs::write(path, format!("{json}\n"))?;
+    Ok(())
+}
+
+// --- Index load/save ---
+
+fn vigil_file(name: &str) -> VpResult<std::path::PathBuf> {
+    Ok(super::vigil_dir().map_err(VpError::Reflection)?.join(name))
+}
+
+pub fn load_conclusion_index() -> VpResult<ConclusionIndex> {
+    let path = vigil_file("conclusion-index.json")?;
+    if !path.exists() {
+        return Ok(ConclusionIndex::default());
+    }
+    Ok(serde_json::from_str(&fs::read_to_string(&path)?)?)
+}
+
+pub fn save_conclusion_index(index: &ConclusionIndex) -> VpResult<()> {
+    let path = vigil_file("conclusion-index.json")?;
+    fs::write(path, serde_json::to_string_pretty(index)? + "\n")?;
+    Ok(())
+}
+
+pub fn load_position_index() -> VpResult<PositionIndex> {
+    let path = vigil_file("position-index.json")?;
+    if !path.exists() {
+        return Ok(PositionIndex::default());
+    }
+    Ok(serde_json::from_str(&fs::read_to_string(&path)?)?)
+}
+
+pub fn save_position_index(index: &PositionIndex) -> VpResult<()> {
+    let path = vigil_file("position-index.json")?;
+    fs::write(path, serde_json::to_string_pretty(index)? + "\n")?;
+    Ok(())
+}
+
+pub fn load_calibration() -> VpResult<CalibrationHistory> {
+    let path = vigil_file("calibration.json")?;
+    if !path.exists() {
+        return Ok(CalibrationHistory::default());
+    }
+    Ok(serde_json::from_str(&fs::read_to_string(&path)?)?)
+}
+
+pub fn save_calibration(history: &CalibrationHistory) -> VpResult<()> {
+    let path = vigil_file("calibration.json")?;
+    fs::write(path, serde_json::to_string_pretty(history)? + "\n")?;
     Ok(())
 }
 

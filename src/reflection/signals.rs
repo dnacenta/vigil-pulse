@@ -146,6 +146,180 @@ fn has_date_pattern(text: &str) -> bool {
     false
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2 — Quality signals
+// ---------------------------------------------------------------------------
+
+/// Conclusion novelty: trigram Jaccard similarity against historical conclusions.
+pub fn conclusion_novelty(
+    reflections_content: &str,
+    history_trigrams: &[std::collections::HashSet<String>],
+) -> Option<f64> {
+    if reflections_content.is_empty() {
+        return None;
+    }
+    let conclusions = parser::extract_conclusions(reflections_content);
+    if conclusions.is_empty() {
+        return None;
+    }
+    let novelties: Vec<f64> = conclusions
+        .iter()
+        .map(|c| {
+            let tri = parser::trigrams(c);
+            if tri.is_empty() || history_trigrams.is_empty() {
+                return 1.0;
+            }
+            let max_overlap = history_trigrams
+                .iter()
+                .map(|h| parser::jaccard_similarity(&tri, h))
+                .fold(0.0_f64, f64::max);
+            1.0 - max_overlap
+        })
+        .collect();
+    Some(novelties.iter().sum::<f64>() / novelties.len() as f64)
+}
+
+/// Intellectual honesty: ratio of entries with uncertainty acknowledgment.
+pub fn intellectual_honesty(reflections_content: &str) -> Option<f64> {
+    if reflections_content.is_empty() {
+        return None;
+    }
+    let entries = parser::extract_entries(
+        reflections_content,
+        &["observations", "patterns", "lessons"],
+    );
+    if entries.is_empty() {
+        return None;
+    }
+    let with_uncertainty = entries
+        .iter()
+        .filter(|(_, body)| has_uncertainty(body))
+        .count();
+    Some(with_uncertainty as f64 / entries.len() as f64)
+}
+
+fn has_uncertainty(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    let markers = [
+        "i'm not sure",
+        "i don't know",
+        "unclear",
+        "uncertain",
+        "might be",
+        "possibly",
+        "perhaps",
+        "open question",
+        "i wonder",
+        "i suspect",
+        "tentatively",
+        "i think",
+        "it seems",
+        "arguably",
+        "i could be wrong",
+    ];
+    markers.iter().any(|m| lower.contains(m))
+}
+
+/// Position delta: ratio of principled position changes to total changes.
+pub fn position_delta(
+    reflections_content: &str,
+    history: &[(String, std::collections::HashSet<String>, bool)],
+) -> Option<f64> {
+    if reflections_content.is_empty() || history.is_empty() {
+        return None;
+    }
+    let positions = parser::extract_positions(reflections_content);
+    if positions.is_empty() {
+        return None;
+    }
+    let mut total_changes = 0;
+    let mut principled = 0;
+    for cur in &positions {
+        for (_, hist_tri, _) in history {
+            if !parser::positions_overlap(&cur.trigrams, hist_tri) {
+                continue;
+            }
+            if parser::jaccard_similarity(&cur.trigrams, hist_tri) > 0.90 {
+                continue;
+            }
+            total_changes += 1;
+            if cur.has_justification {
+                principled += 1;
+            }
+        }
+    }
+    if total_changes == 0 {
+        return None;
+    }
+    Some(principled as f64 / total_changes as f64)
+}
+
+/// Comfort index: tendency toward sycophancy (0=healthy tension, 1=too comfortable).
+pub fn comfort_index(
+    reflections_content: &str,
+    history: &[(String, std::collections::HashSet<String>, bool)],
+) -> Option<f64> {
+    if reflections_content.is_empty() || history.is_empty() {
+        return None;
+    }
+    let positions = parser::extract_positions(reflections_content);
+    if positions.is_empty() {
+        return None;
+    }
+    // Sub-signal 1: contradiction rate (0 contradictions = suspicious comfort)
+    let contradiction = if positions.len() < 2 {
+        0.5
+    } else {
+        let mut pairs = 0;
+        let mut acknowledged = 0;
+        for i in 0..positions.len() {
+            for j in (i + 1)..positions.len() {
+                if parser::positions_contradict(
+                    &positions[i].text,
+                    &positions[j].text,
+                    &positions[i].trigrams,
+                    &positions[j].trigrams,
+                ) {
+                    pairs += 1;
+                    if positions[i].has_justification || positions[j].has_justification {
+                        acknowledged += 1;
+                    }
+                }
+            }
+        }
+        if pairs == 0 {
+            0.5
+        } else {
+            (pairs - acknowledged) as f64 / pairs as f64
+        }
+    };
+    // Sub-signal 2: flip rate
+    let mut overlapping = 0;
+    let mut unjustified_flips = 0;
+    for cur in &positions {
+        for (hist_text, hist_tri, _) in history {
+            if !parser::positions_overlap(&cur.trigrams, hist_tri) {
+                continue;
+            }
+            overlapping += 1;
+            if parser::jaccard_similarity(&cur.trigrams, hist_tri) > 0.90 {
+                continue;
+            }
+            if parser::positions_contradict(&cur.text, hist_text, &cur.trigrams, hist_tri)
+                && !cur.has_justification
+            {
+                unjustified_flips += 1;
+            }
+        }
+    }
+    let flip = if overlapping == 0 {
+        0.5
+    } else {
+        (unjustified_flips as f64 / overlapping as f64).min(1.0)
+    };
+    Some((contradiction + flip) / 2.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
