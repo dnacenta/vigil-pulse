@@ -162,6 +162,47 @@ pub struct PulseState {
     pub last_pulse: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// Metacognitive calibration (HOT-2: predict-then-measure cycle)
+// ---------------------------------------------------------------------------
+
+/// A prediction of signal values made BEFORE measurement.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CalibrationPrediction {
+    pub timestamp: String,
+    /// Predicted values per signal name. Keys match SIGNAL_NAMES.
+    pub predictions: HashMap<String, f64>,
+}
+
+/// A calibration record: prediction vs actual, with surprise scores.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CalibrationRecord {
+    pub timestamp: String,
+    /// Per-signal: (predicted, actual, surprise)
+    pub signals: Vec<CalibrationSignal>,
+    /// Overall calibration error (mean absolute surprise).
+    pub mean_surprise: f64,
+}
+
+/// One signal's calibration data.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CalibrationSignal {
+    pub name: String,
+    pub predicted: f64,
+    pub actual: f64,
+    /// |predicted - actual| — how surprised the system was.
+    pub surprise: f64,
+}
+
+/// Persistent calibration history.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct CalibrationHistory {
+    /// Rolling window of calibration records.
+    pub records: Vec<CalibrationRecord>,
+    /// The most recent prediction (waiting to be compared against measurement).
+    pub pending_prediction: Option<CalibrationPrediction>,
+}
+
 /// Persistent conclusion index for novelty comparison.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct ConclusionIndex {
@@ -258,6 +299,28 @@ pub fn save_pulse_state(state: &PulseState) -> Result<(), String> {
     let json = serde_json::to_string_pretty(state)
         .map_err(|e| format!("Failed to serialize pulse state: {e}"))?;
     fs::write(path, format!("{json}\n")).map_err(|e| format!("Failed to write pulse state: {e}"))
+}
+
+pub fn calibration_file() -> Result<std::path::PathBuf, String> {
+    let dir = super::vigil_dir()?;
+    Ok(dir.join("calibration.json"))
+}
+
+pub fn load_calibration() -> Result<CalibrationHistory, String> {
+    let path = calibration_file()?;
+    if !path.exists() {
+        return Ok(CalibrationHistory::default());
+    }
+    let content =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read calibration: {e}"))?;
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse calibration: {e}"))
+}
+
+pub fn save_calibration(history: &CalibrationHistory) -> Result<(), String> {
+    let path = calibration_file()?;
+    let json = serde_json::to_string_pretty(history)
+        .map_err(|e| format!("Failed to serialize calibration: {e}"))?;
+    fs::write(path, format!("{json}\n")).map_err(|e| format!("Failed to write calibration: {e}"))
 }
 
 pub fn conclusion_index_file() -> Result<std::path::PathBuf, String> {
